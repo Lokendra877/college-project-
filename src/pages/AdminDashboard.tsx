@@ -29,6 +29,7 @@ import { Loader2, Power, PlayCircle, Users, Clock, Volume2, Download, FileText, 
 import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { RecordingsList } from '@/components/RecordingsList';
 import { NavbarVoiceTranslator } from '@/components/NavbarVoiceTranslator';
 import { useSpeechTranscription, useTranscriptListener } from '@/hooks/useTranslation';
 import { exportAllCSV, exportSessionPDF } from '@/lib/exportData';
@@ -128,11 +129,21 @@ export default function AdminDashboard() {
 
   if (!session || session.admin_code !== adminCode) {
     return (
-      <div className="min-h-screen flex items-center justify-center gradient-hero">
-        <Card className="max-w-md shadow-lg border"><CardContent className="p-8 text-center">
-          <h2 className="font-heading text-2xl font-bold mb-2">Access Denied</h2>
-          <p className="text-muted-foreground text-sm">Invalid admin code.</p>
-        </CardContent></Card>
+      <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+        <Card className="max-w-md shadow-lg border w-full">
+          <CardContent className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+              <Power className="w-6 h-6" />
+            </div>
+            <h2 className="font-heading text-2xl font-bold">Access Denied</h2>
+            <p className="text-muted-foreground text-sm">
+              Invalid or missing admin code for this session. Please open the dashboard directly from your Admin Home.
+            </p>
+            <Button onClick={() => navigate('/admin-home')} className="w-full">
+              Back to Admin Home
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
