@@ -11,6 +11,7 @@ import { SpeakerTimer } from '@/components/SpeakerTimer';
 import { AudioStatus } from '@/components/AudioStatus';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { LiveSubtitles } from '@/components/LiveSubtitles';
+import { VoiceTranslatorHub } from '@/components/VoiceTranslatorHub';
 import { SessionPolls } from '@/components/SessionPolls';
 import { AudienceQuestions } from '@/components/AudienceQuestions';
 import { UserNotificationBell } from '@/components/UserNotificationBell';
@@ -52,8 +53,8 @@ export default function SessionPage() {
   const [userEmail, setUserEmail] = useState(savedEmail);
   const [emailError, setEmailError] = useState('');
   const [hasJoined, setHasJoined] = useState(!!savedName && !!savedEmail);
-  const [targetLanguage, setTargetLanguage] = useState<string | null>(null);
-  const [speakerLanguage, setSpeakerLanguage] = useState<string>('English');
+  const [targetLanguage, setTargetLanguage] = useState<string | null>('English');
+  const [speakerLanguage, setSpeakerLanguage] = useState<string>('Hindi');
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [ttsRate, setTtsRate] = useState(1.0);
   const [ttsVolume, setTtsVolume] = useState(1.0);
@@ -63,8 +64,23 @@ export default function SessionPage() {
   const amISpeaking = myEntry?.status === 'speaking' || false;
   const { isStreaming, isReceiving, micError } = useWebRTC(sessionId, amISpeaking);
 
-  useSpeechTranscription(sessionId, amISpeaking, speakerLanguage);
-  const { subtitle, translatedSubtitle, isTranslating, history, clearHistory } = useTranscriptListener(
+  const {
+    isTranscribing,
+    currentText: currentSpokenText,
+    speechError,
+    toggleTranscription,
+  } = useSpeechTranscription(sessionId, amISpeaking, speakerLanguage, userName || 'User');
+
+  const {
+    subtitle,
+    translatedSubtitle,
+    sourceLanguage: detectedSourceLang,
+    speakerName,
+    isTranslating,
+    history,
+    clearHistory,
+    testAudioVoice,
+  } = useTranscriptListener(
     sessionId,
     targetLanguage,
     ttsEnabled,
@@ -273,47 +289,32 @@ export default function SessionPage() {
         {/* Audio Status */}
         <AudioStatus isSpeaker={amISpeaking} isStreaming={isStreaming} isReceiving={isReceiving} micError={micError} />
 
-        {/* Speaker Language Selector - visible when current user is speaking */}
-        {amISpeaking && (
-          <div className="my-3 p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
-                <Mic2 className="w-3.5 h-3.5" /> Your Spoken Language
-              </span>
-              <span className="text-[11px] text-muted-foreground">Select what you speak for accurate captions</span>
-            </div>
-            <LanguageSelector
-              selectedLanguage={speakerLanguage}
-              onSelect={(lang) => setSpeakerLanguage(lang || 'English')}
-              labelPrefix="Speaking in"
-            />
-          </div>
-        )}
-
-        {/* Audience Translation Language Selector */}
-        <div className="my-3">
-          <LanguageSelector
-            selectedLanguage={targetLanguage}
-            onSelect={setTargetLanguage}
-            labelPrefix="Translate into"
-          />
-        </div>
-
-        {/* Live Subtitles & Voice Translator Hub */}
-        <div className="mb-4">
-          <LiveSubtitles
-            originalText={subtitle}
-            translatedText={translatedSubtitle}
+        {/* Voice Translator Hub */}
+        <div className="my-4">
+          <VoiceTranslatorHub
+            isTranscribing={isTranscribing}
+            currentSpokenText={currentSpokenText}
+            speechError={speechError}
+            onToggleTranscription={toggleTranscription}
+            sourceLanguage={speakerLanguage}
+            onSourceLanguageChange={setSpeakerLanguage}
+            subtitle={subtitle}
+            translatedSubtitle={translatedSubtitle}
+            detectedSourceLang={detectedSourceLang}
+            speakerName={speakerName}
             isTranslating={isTranslating}
             targetLanguage={targetLanguage}
+            onTargetLanguageChange={setTargetLanguage}
             ttsEnabled={ttsEnabled}
             onToggleTts={() => setTtsEnabled((prev) => !prev)}
             ttsVolume={ttsVolume}
             onVolumeChange={setTtsVolume}
             ttsRate={ttsRate}
             onRateChange={setTtsRate}
+            onTestAudio={testAudioVoice}
             history={history}
             onClearHistory={clearHistory}
+            role="user"
           />
         </div>
 

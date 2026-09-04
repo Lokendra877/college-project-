@@ -30,9 +30,8 @@ import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { RecordingsList } from '@/components/RecordingsList';
-import { LiveSubtitles } from '@/components/LiveSubtitles';
-import { LanguageSelector } from '@/components/LanguageSelector';
-import { useTranscriptListener } from '@/hooks/useTranslation';
+import { VoiceTranslatorHub } from '@/components/VoiceTranslatorHub';
+import { useSpeechTranscription, useTranscriptListener } from '@/hooks/useTranslation';
 import { exportAllCSV, exportSessionPDF } from '@/lib/exportData';
 
 export default function AdminDashboard() {
@@ -41,16 +40,34 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const adminCode = searchParams.get('code');
   const [volume, setVolume] = useState(100);
-  const [targetLanguage, setTargetLanguage] = useState<string | null>(null);
+  const [speakerLanguage, setSpeakerLanguage] = useState<string>('English');
+  const [targetLanguage, setTargetLanguage] = useState<string | null>('English');
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [ttsRate, setTtsRate] = useState(1.0);
+  const [ttsVolume, setTtsVolume] = useState(1.0);
   const { session, queue, loading } = useSession(sessionId);
   const { grantMic, revokeMic, skipSpeaker, removeFromQueue, grantNextSpeaker, promoteModerator } = useQueueActions(sessionId);
   const { isReceiving, remoteAudioRef, remoteStreamRef, recordableStreamRef, setEQ, setVolume: setAudioVolume, enhancements, updateEnhancement, inputLevel, analyserRef } = useWebRTC(sessionId, false);
   const analyticsData = useSessionAnalytics(sessionId, session?.created_at);
   const { isRecording, startRecording, stopRecording } = useAudioRecorder(sessionId);
-  const [ttsRate, setTtsRate] = useState(1.0);
-  const [ttsVolume, setTtsVolume] = useState(1.0);
-  const { subtitle, translatedSubtitle, isTranslating, history, clearHistory } = useTranscriptListener(sessionId, targetLanguage, ttsEnabled, ttsRate, ttsVolume);
+
+  const {
+    isTranscribing,
+    currentText: currentSpokenText,
+    speechError,
+    toggleTranscription,
+  } = useSpeechTranscription(sessionId, false, speakerLanguage, 'Admin (Laptop)');
+
+  const {
+    subtitle,
+    translatedSubtitle,
+    sourceLanguage: detectedSourceLang,
+    speakerName,
+    isTranslating,
+    history,
+    clearHistory,
+    testAudioVoice,
+  } = useTranscriptListener(sessionId, targetLanguage, ttsEnabled, ttsRate, ttsVolume);
 
   const prevSpeakerRef = useRef<string | null>(null);
 
@@ -214,20 +231,30 @@ export default function AdminDashboard() {
             </Card>
             <AudioVisualizer analyserNode={analyserRef.current} isReceiving={isReceiving} />
             <AudioEqualizer onEQChange={setEQ} onVolumeChange={setAudioVolume} enhancements={enhancements} onEnhancementChange={updateEnhancement} inputLevel={inputLevel} />
-            <LanguageSelector selectedLanguage={targetLanguage} onSelect={setTargetLanguage} />
-            <LiveSubtitles
-              originalText={subtitle}
-              translatedText={translatedSubtitle}
+            <VoiceTranslatorHub
+              isTranscribing={isTranscribing}
+              currentSpokenText={currentSpokenText}
+              speechError={speechError}
+              onToggleTranscription={toggleTranscription}
+              sourceLanguage={speakerLanguage}
+              onSourceLanguageChange={setSpeakerLanguage}
+              subtitle={subtitle}
+              translatedSubtitle={translatedSubtitle}
+              detectedSourceLang={detectedSourceLang}
+              speakerName={speakerName}
               isTranslating={isTranslating}
               targetLanguage={targetLanguage}
+              onTargetLanguageChange={setTargetLanguage}
               ttsEnabled={ttsEnabled}
               onToggleTts={() => setTtsEnabled(prev => !prev)}
               ttsVolume={ttsVolume}
               onVolumeChange={setTtsVolume}
               ttsRate={ttsRate}
               onRateChange={setTtsRate}
+              onTestAudio={testAudioVoice}
               history={history}
               onClearHistory={clearHistory}
+              role="admin"
             />
             <Card className="shadow-md border-2 border-primary/20">
               <CardHeader><CardTitle className="font-heading text-xl">Current Speaker</CardTitle></CardHeader>
