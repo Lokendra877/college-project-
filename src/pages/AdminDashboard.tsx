@@ -49,6 +49,7 @@ export default function AdminDashboard() {
   const { isReceiving, remoteAudioRef, remoteStreamRef, recordableStreamRef, setEQ, setVolume: setAudioVolume, enhancements, updateEnhancement, inputLevel, analyserRef } = useWebRTC(sessionId, false);
   const analyticsData = useSessionAnalytics(sessionId, session?.created_at);
   const { isRecording, startRecording, stopRecording } = useAudioRecorder(sessionId);
+  const [recordings, setRecordings] = useState<any[]>([]);
 
   const {
     isTranscribing,
