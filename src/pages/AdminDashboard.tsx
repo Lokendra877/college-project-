@@ -29,8 +29,7 @@ import { Loader2, Power, PlayCircle, Users, Clock, Volume2, Download, FileText, 
 import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-import { RecordingsList } from '@/components/RecordingsList';
-import { VoiceTranslatorHub } from '@/components/VoiceTranslatorHub';
+import { NavbarVoiceTranslator } from '@/components/NavbarVoiceTranslator';
 import { useSpeechTranscription, useTranscriptListener } from '@/hooks/useTranslation';
 import { exportAllCSV, exportSessionPDF } from '@/lib/exportData';
 
@@ -169,7 +168,32 @@ export default function AdminDashboard() {
             <h1 className="font-heading text-3xl font-bold">{session.title}</h1>
             <p className="text-sm text-muted-foreground">Admin Dashboard</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <NavbarVoiceTranslator
+              isTranscribing={isTranscribing}
+              currentSpokenText={currentSpokenText}
+              speechError={speechError}
+              onToggleTranscription={toggleTranscription}
+              sourceLanguage={speakerLanguage}
+              onSourceLanguageChange={setSpeakerLanguage}
+              subtitle={subtitle}
+              translatedSubtitle={translatedSubtitle}
+              detectedSourceLang={detectedSourceLang}
+              speakerName={speakerName}
+              isTranslating={isTranslating}
+              targetLanguage={targetLanguage}
+              onTargetLanguageChange={setTargetLanguage}
+              ttsEnabled={ttsEnabled}
+              onToggleTts={() => setTtsEnabled(prev => !prev)}
+              ttsVolume={ttsVolume}
+              onVolumeChange={setTtsVolume}
+              ttsRate={ttsRate}
+              onRateChange={setTtsRate}
+              onTestAudio={testAudioVoice}
+              history={history}
+              onClearHistory={clearHistory}
+              role="admin"
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm"><Download className="w-4 h-4 mr-1" /> Export</Button>
@@ -231,31 +255,6 @@ export default function AdminDashboard() {
             </Card>
             <AudioVisualizer analyserNode={analyserRef.current} isReceiving={isReceiving} />
             <AudioEqualizer onEQChange={setEQ} onVolumeChange={setAudioVolume} enhancements={enhancements} onEnhancementChange={updateEnhancement} inputLevel={inputLevel} />
-            <VoiceTranslatorHub
-              isTranscribing={isTranscribing}
-              currentSpokenText={currentSpokenText}
-              speechError={speechError}
-              onToggleTranscription={toggleTranscription}
-              sourceLanguage={speakerLanguage}
-              onSourceLanguageChange={setSpeakerLanguage}
-              subtitle={subtitle}
-              translatedSubtitle={translatedSubtitle}
-              detectedSourceLang={detectedSourceLang}
-              speakerName={speakerName}
-              isTranslating={isTranslating}
-              targetLanguage={targetLanguage}
-              onTargetLanguageChange={setTargetLanguage}
-              ttsEnabled={ttsEnabled}
-              onToggleTts={() => setTtsEnabled(prev => !prev)}
-              ttsVolume={ttsVolume}
-              onVolumeChange={setTtsVolume}
-              ttsRate={ttsRate}
-              onRateChange={setTtsRate}
-              onTestAudio={testAudioVoice}
-              history={history}
-              onClearHistory={clearHistory}
-              role="admin"
-            />
             <Card className="shadow-md border-2 border-primary/20">
               <CardHeader><CardTitle className="font-heading text-xl">Current Speaker</CardTitle></CardHeader>
               <CardContent className="space-y-4">

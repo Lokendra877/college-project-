@@ -9,9 +9,7 @@ import { QueueList } from '@/components/QueueList';
 import { MicStatus } from '@/components/MicStatus';
 import { SpeakerTimer } from '@/components/SpeakerTimer';
 import { AudioStatus } from '@/components/AudioStatus';
-import { LanguageSelector } from '@/components/LanguageSelector';
-import { LiveSubtitles } from '@/components/LiveSubtitles';
-import { VoiceTranslatorHub } from '@/components/VoiceTranslatorHub';
+import { NavbarVoiceTranslator } from '@/components/NavbarVoiceTranslator';
 import { SessionPolls } from '@/components/SessionPolls';
 import { AudienceQuestions } from '@/components/AudienceQuestions';
 import { UserNotificationBell } from '@/components/UserNotificationBell';
@@ -269,6 +267,31 @@ export default function SessionPage() {
             <p className="text-sm text-muted-foreground">Welcome, {userName}</p>
           </div>
           <div className="flex items-center gap-2">
+            <NavbarVoiceTranslator
+              isTranscribing={isTranscribing}
+              currentSpokenText={currentSpokenText}
+              speechError={speechError}
+              onToggleTranscription={toggleTranscription}
+              sourceLanguage={speakerLanguage}
+              onSourceLanguageChange={setSpeakerLanguage}
+              subtitle={subtitle}
+              translatedSubtitle={translatedSubtitle}
+              detectedSourceLang={detectedSourceLang}
+              speakerName={speakerName}
+              isTranslating={isTranslating}
+              targetLanguage={targetLanguage}
+              onTargetLanguageChange={setTargetLanguage}
+              ttsEnabled={ttsEnabled}
+              onToggleTts={() => setTtsEnabled((prev) => !prev)}
+              ttsVolume={ttsVolume}
+              onVolumeChange={setTtsVolume}
+              ttsRate={ttsRate}
+              onRateChange={setTtsRate}
+              onTestAudio={testAudioVoice}
+              history={history}
+              onClearHistory={clearHistory}
+              role="user"
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9">
@@ -288,35 +311,6 @@ export default function SessionPage() {
 
         {/* Audio Status */}
         <AudioStatus isSpeaker={amISpeaking} isStreaming={isStreaming} isReceiving={isReceiving} micError={micError} />
-
-        {/* Voice Translator Hub */}
-        <div className="my-4">
-          <VoiceTranslatorHub
-            isTranscribing={isTranscribing}
-            currentSpokenText={currentSpokenText}
-            speechError={speechError}
-            onToggleTranscription={toggleTranscription}
-            sourceLanguage={speakerLanguage}
-            onSourceLanguageChange={setSpeakerLanguage}
-            subtitle={subtitle}
-            translatedSubtitle={translatedSubtitle}
-            detectedSourceLang={detectedSourceLang}
-            speakerName={speakerName}
-            isTranslating={isTranslating}
-            targetLanguage={targetLanguage}
-            onTargetLanguageChange={setTargetLanguage}
-            ttsEnabled={ttsEnabled}
-            onToggleTts={() => setTtsEnabled((prev) => !prev)}
-            ttsVolume={ttsVolume}
-            onVolumeChange={setTtsVolume}
-            ttsRate={ttsRate}
-            onRateChange={setTtsRate}
-            onTestAudio={testAudioVoice}
-            history={history}
-            onClearHistory={clearHistory}
-            role="user"
-          />
-        </div>
 
         {/* Current Speaker */}
         <Card className="mb-4 shadow-md border">
