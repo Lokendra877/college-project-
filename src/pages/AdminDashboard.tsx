@@ -48,8 +48,9 @@ export default function AdminDashboard() {
   const { isReceiving, remoteAudioRef, remoteStreamRef, recordableStreamRef, setEQ, setVolume: setAudioVolume, enhancements, updateEnhancement, inputLevel, analyserRef } = useWebRTC(sessionId, false);
   const analyticsData = useSessionAnalytics(sessionId, session?.created_at);
   const { isRecording, startRecording, stopRecording } = useAudioRecorder(sessionId);
-  const [recordings, setRecordings] = useState<any[]>([]);
-  const { subtitle, translatedSubtitle, isTranslating } = useTranscriptListener(sessionId, targetLanguage, ttsEnabled);
+  const [ttsRate, setTtsRate] = useState(1.0);
+  const [ttsVolume, setTtsVolume] = useState(1.0);
+  const { subtitle, translatedSubtitle, isTranslating, history, clearHistory } = useTranscriptListener(sessionId, targetLanguage, ttsEnabled, ttsRate, ttsVolume);
 
   const prevSpeakerRef = useRef<string | null>(null);
 
@@ -214,7 +215,20 @@ export default function AdminDashboard() {
             <AudioVisualizer analyserNode={analyserRef.current} isReceiving={isReceiving} />
             <AudioEqualizer onEQChange={setEQ} onVolumeChange={setAudioVolume} enhancements={enhancements} onEnhancementChange={updateEnhancement} inputLevel={inputLevel} />
             <LanguageSelector selectedLanguage={targetLanguage} onSelect={setTargetLanguage} />
-            <LiveSubtitles originalText={subtitle} translatedText={translatedSubtitle} isTranslating={isTranslating} targetLanguage={targetLanguage} ttsEnabled={ttsEnabled} onToggleTts={() => setTtsEnabled(prev => !prev)} />
+            <LiveSubtitles
+              originalText={subtitle}
+              translatedText={translatedSubtitle}
+              isTranslating={isTranslating}
+              targetLanguage={targetLanguage}
+              ttsEnabled={ttsEnabled}
+              onToggleTts={() => setTtsEnabled(prev => !prev)}
+              ttsVolume={ttsVolume}
+              onVolumeChange={setTtsVolume}
+              ttsRate={ttsRate}
+              onRateChange={setTtsRate}
+              history={history}
+              onClearHistory={clearHistory}
+            />
             <Card className="shadow-md border-2 border-primary/20">
               <CardHeader><CardTitle className="font-heading text-xl">Current Speaker</CardTitle></CardHeader>
               <CardContent className="space-y-4">
