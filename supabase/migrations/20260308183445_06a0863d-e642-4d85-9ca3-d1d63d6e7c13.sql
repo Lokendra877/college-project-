@@ -1,0 +1,1 @@
+ALTER TABLE public.speaker_queue ADD COLUMN user_email text;

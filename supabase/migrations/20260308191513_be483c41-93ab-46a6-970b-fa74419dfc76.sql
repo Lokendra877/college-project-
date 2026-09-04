@@ -1,0 +1,1 @@
+ALTER TABLE public.session_polls ADD COLUMN is_multi_select boolean NOT NULL DEFAULT false;

@@ -1,0 +1,1 @@
+ALTER TABLE public.poll_votes ADD CONSTRAINT poll_votes_poll_device_option_unique UNIQUE (poll_id, device_id, option_index);

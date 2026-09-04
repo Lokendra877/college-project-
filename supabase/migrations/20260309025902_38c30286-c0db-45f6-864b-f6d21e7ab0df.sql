@@ -1,0 +1,1 @@
+ALTER TABLE public.speaker_queue ADD COLUMN is_moderator boolean NOT NULL DEFAULT false;

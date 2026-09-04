@@ -1,0 +1,1 @@
+CREATE POLICY "Anyone can delete polls" ON public.session_polls FOR DELETE USING (true);

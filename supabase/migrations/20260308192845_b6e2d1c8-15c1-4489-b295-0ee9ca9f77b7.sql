@@ -1,0 +1,1 @@
+ALTER TABLE public.session_polls ADD COLUMN closes_at timestamp with time zone DEFAULT NULL;

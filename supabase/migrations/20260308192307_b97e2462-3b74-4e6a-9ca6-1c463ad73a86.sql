@@ -1,0 +1,1 @@
+ALTER TABLE public.poll_votes DROP CONSTRAINT poll_votes_poll_id_device_id_key;
