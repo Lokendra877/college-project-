@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Loader2, Plus, LogOut, Mic, ExternalLink, Trash2 } from 'lucide-react';
+import { Loader2, Plus, LogOut, Mic, ExternalLink, Trash2, Power, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminNotifications } from '@/components/AdminNotifications';
 
@@ -41,6 +41,9 @@ export default function AdminHome() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [filter, setFilter] = useState<'active' | 'ended'>('active');
+  const [endConfirm, setEndConfirm] = useState<string | null>(null);
+  const [ending, setEnding] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -121,6 +124,35 @@ export default function AdminHome() {
     toast.success('Session deleted');
   };
 
+  const endSession = async (sessionId: string) => {
+    setEnding(true);
+    const { error } = await supabase
+      .from('sessions')
+      .update({ is_active: false, current_speaker_id: null })
+      .eq('id', sessionId);
+
+    if (error) {
+      toast.error('Failed to end session');
+      setEnding(false);
+      return;
+    }
+
+    await supabase
+      .from('speaker_queue')
+      .update({ status: 'done', finished_speaking_at: new Date().toISOString() })
+      .eq('session_id', sessionId)
+      .in('status', ['waiting', 'speaking']);
+
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, is_active: false } : s));
+    setEndConfirm(null);
+    setEnding(false);
+    toast.success('Session ended and removed from active list');
+  };
+
+  const activeSessions = sessions.filter(s => s.is_active);
+  const endedSessions = sessions.filter(s => !s.is_active);
+  const displayedSessions = filter === 'active' ? activeSessions : endedSessions;
+
   const handleLogout = async () => {
     localStorage.removeItem('smartmic_admin_email');
     await supabase.auth.signOut();
@@ -195,19 +227,47 @@ export default function AdminHome() {
           </motion.div>
         )}
 
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 mb-6">
+          <Button
+            variant={filter === 'active' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('active')}
+            className="text-xs rounded-lg"
+          >
+            Active Sessions ({activeSessions.length})
+          </Button>
+          <Button
+            variant={filter === 'ended' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilter('ended')}
+            className="text-xs rounded-lg text-muted-foreground"
+          >
+            Past / Ended ({endedSessions.length})
+          </Button>
+        </div>
+
         {/* Sessions List */}
-        {sessions.length === 0 ? (
-          <div className="text-center py-20">
+        {displayedSessions.length === 0 ? (
+          <div className="text-center py-20 bg-muted/10 rounded-2xl border border-dashed border-border/50">
             <Mic className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="font-heading text-xl font-semibold mb-2">No sessions yet</h2>
-            <p className="text-muted-foreground mb-4">Create your first auditorium session to get started.</p>
-            <Button variant="hero" onClick={() => setShowCreate(true)}>
-              <Plus className="w-4 h-4 mr-1" /> Create Session
-            </Button>
+            <h2 className="font-heading text-xl font-semibold mb-2">
+              {filter === 'active' ? 'No active sessions' : 'No ended sessions'}
+            </h2>
+            <p className="text-muted-foreground mb-4">
+              {filter === 'active'
+                ? 'There are no live sessions running right now. Click below to create one.'
+                : 'Ended sessions will appear here for reference.'}
+            </p>
+            {filter === 'active' && (
+              <Button variant="hero" onClick={() => setShowCreate(true)}>
+                <Plus className="w-4 h-4 mr-1" /> Create Session
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sessions.map((s, i) => (
+            {displayedSessions.map((s, i) => (
               <motion.div
                 key={s.id}
                 initial={{ opacity: 0, y: 12 }}
@@ -234,28 +294,71 @@ export default function AdminHome() {
                       </span>
                     </div>
 
-                    {/* QR Code */}
-                    <div className="flex justify-center">
-                      <QRDisplay sessionId={s.id} size={140} />
-                    </div>
+                    {/* QR Code - only show active QR code for live sessions */}
+                    {s.is_active ? (
+                      <div className="flex justify-center">
+                        <QRDisplay sessionId={s.id} size={140} />
+                      </div>
+                    ) : (
+                      <div className="h-32 flex items-center justify-center bg-muted/20 rounded-xl border border-dashed text-xs text-muted-foreground">
+                        Session Closed
+                      </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => navigate(`/admin/${s.id}?code=${s.admin_code}`)}
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                        Open Dashboard
-                      </Button>
+                      {s.is_active ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-xs"
+                            onClick={() => navigate(`/admin/${s.id}?code=${s.admin_code}`)}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                            Open
+                          </Button>
+                          <AlertDialog open={endConfirm === s.id} onOpenChange={(open) => setEndConfirm(open ? s.id : null)}>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-warning hover:text-warning text-xs"
+                                title="End Session"
+                              >
+                                <Power className="w-3.5 h-3.5 mr-1" />
+                                End
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>End session?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Ending "{s.title}" will disconnect all speakers and audience members. It will be removed from your active list.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => endSession(s.id)}
+                                  disabled={ending}
+                                  className="bg-warning text-warning-foreground hover:bg-warning/90"
+                                >
+                                  {ending ? 'Ending...' : 'End Session'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      ) : null}
+
                       <AlertDialog open={deleteConfirm === s.id} onOpenChange={(open) => setDeleteConfirm(open ? s.id : null)}>
                         <AlertDialogTrigger asChild>
                           <Button
                             variant="outline"
                             size="sm"
                             className="text-destructive hover:text-destructive"
+                            title="Delete permanently"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>

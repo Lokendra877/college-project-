@@ -94,9 +94,10 @@ export default function AdminDashboard() {
 
   const endSession = async () => {
     if (!sessionId) return;
-    await supabase.from('sessions').update({ is_active: false }).eq('id', sessionId);
+    await supabase.from('sessions').update({ is_active: false, current_speaker_id: null }).eq('id', sessionId);
+    await supabase.from('speaker_queue').update({ status: 'done', finished_speaking_at: new Date().toISOString() }).eq('session_id', sessionId).in('status', ['waiting', 'speaking']);
     toast.success('Session ended');
-    navigate('/');
+    navigate('/admin-home');
   };
 
   if (loading) {
@@ -114,6 +115,27 @@ export default function AdminDashboard() {
           <h2 className="font-heading text-2xl font-bold mb-2">Access Denied</h2>
           <p className="text-muted-foreground text-sm">Invalid admin code.</p>
         </CardContent></Card>
+      </div>
+    );
+  }
+
+  if (!session.is_active) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+        <Card className="max-w-md shadow-lg border w-full">
+          <CardContent className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+              <Power className="w-6 h-6" />
+            </div>
+            <h2 className="font-heading text-2xl font-bold">Session Ended</h2>
+            <p className="text-muted-foreground text-sm">
+              "{session.title}" has been ended and is no longer active.
+            </p>
+            <Button onClick={() => navigate('/admin-home')} className="w-full">
+              Back to Admin Home
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

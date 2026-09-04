@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useSession } from '@/hooks/useSession';
 import { useQueueActions } from '@/hooks/useQueueActions';
@@ -40,6 +40,7 @@ function setCookie(name: string, value: string, days: number = 365) {
 }
 
 export default function SessionPage() {
+  const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
   const { session, queue, loading } = useSession(sessionId);
   const { requestToSpeak, grantMic, revokeMic, skipSpeaker, removeFromQueue, grantNextSpeaker, moderatorSpeakNow, deviceId } = useQueueActions(sessionId);
@@ -72,11 +73,14 @@ export default function SessionPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background gradient-hero">
-        <Card className="max-w-md shadow-lg border">
-          <CardContent className="p-8 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-background gradient-hero p-4">
+        <Card className="max-w-md shadow-lg border w-full">
+          <CardContent className="p-8 text-center space-y-4">
             <h2 className="font-heading text-2xl font-bold mb-2">Session Not Found</h2>
             <p className="text-muted-foreground text-sm">This session may have ended or the link is invalid.</p>
+            <Button onClick={() => navigate('/app')} className="w-full">
+              Join Another Session
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -85,11 +89,17 @@ export default function SessionPage() {
 
   if (!session.is_active) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background gradient-hero">
-        <Card className="max-w-md shadow-lg border">
-          <CardContent className="p-8 text-center">
-            <h2 className="font-heading text-2xl font-bold mb-2">Session Ended</h2>
-            <p className="text-muted-foreground text-sm">This session is no longer active.</p>
+      <div className="min-h-screen flex items-center justify-center bg-background gradient-hero p-4">
+        <Card className="max-w-md shadow-lg border w-full">
+          <CardContent className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+              <Mic className="w-6 h-6" />
+            </div>
+            <h2 className="font-heading text-2xl font-bold">Session Ended</h2>
+            <p className="text-muted-foreground text-sm">This auditorium session has ended and is no longer active.</p>
+            <Button onClick={() => navigate('/app')} className="w-full">
+              Join Another Session
+            </Button>
           </CardContent>
         </Card>
       </div>
