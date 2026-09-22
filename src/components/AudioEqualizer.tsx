@@ -5,12 +5,24 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { SlidersHorizontal, RotateCcw, Volume2, ShieldCheck, Waves, Gauge } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  RotateCcw,
+  Volume2,
+  ShieldCheck,
+  Waves,
+  Gauge,
+  Ear,
+  Sliders,
+  Sparkles,
+  ShieldAlert,
+} from 'lucide-react';
 import type { EQBand, AudioEnhancementSettings } from '@/hooks/useWebRTC';
 
 interface AudioEqualizerProps {
   onEQChange: (band: EQBand, gainDb: number) => void;
   onVolumeChange?: (value: number) => void;
+  onBalanceChange?: (panValue: number) => void;
   enhancements?: AudioEnhancementSettings;
   onEnhancementChange?: (key: keyof AudioEnhancementSettings, value: boolean) => void;
   inputLevel?: number;
@@ -23,19 +35,29 @@ const BANDS: { key: EQBand; label: string; freq: string }[] = [
 ];
 
 const PRESETS: Record<string, Record<EQBand, number>> = {
-  Flat: { bass: 0, mid: 0, treble: 0 },
-  Auditorium: { bass: 3, mid: 0, treble: 2 },
-  'Lecture Hall': { bass: 2, mid: 2, treble: 3 },
+  'Echo-Shield': { bass: -3, mid: 2, treble: -2 }, // Cuts bass resonance & high screech
+  'Voice Clarity': { bass: -2, mid: 4, treble: 2 },
   Clarity: { bass: -2, mid: 3, treble: 2 },
+  Auditorium: { bass: 2, mid: 1, treble: 2 },
+  Flat: { bass: 0, mid: 0, treble: 0 },
   Warm: { bass: 4, mid: 2, treble: 0 },
-  Outdoor: { bass: 5, mid: 1, treble: 4 },
+  'Lecture Hall': { bass: 1, mid: 3, treble: 2 },
+  Outdoor: { bass: 4, mid: 2, treble: 4 },
   'Voice Boost': { bass: -1, mid: 5, treble: 3 },
-  'De-Ess': { bass: 0, mid: 0, treble: -4 },
+  'De-Ess': { bass: 0, mid: 0, treble: -5 },
 };
 
-export function AudioEqualizer({ onEQChange, onVolumeChange, enhancements, onEnhancementChange, inputLevel = 0 }: AudioEqualizerProps) {
+export function AudioEqualizer({
+  onEQChange,
+  onVolumeChange,
+  onBalanceChange,
+  enhancements,
+  onEnhancementChange,
+  inputLevel = 0,
+}: AudioEqualizerProps) {
   const [gains, setGains] = useState<Record<EQBand, number>>({ bass: 0, mid: 0, treble: 0 });
   const [volume, setVolume] = useState(100);
+  const [balance, setBalance] = useState(0); // -100 to +100
   const [activePreset, setActivePreset] = useState<string | null>('Flat');
 
   const handleChange = (band: EQBand, value: number[]) => {
@@ -55,13 +77,21 @@ export function AudioEqualizer({ onEQChange, onVolumeChange, enhancements, onEnh
   const resetAll = () => {
     applyPreset('Flat');
     setVolume(100);
+    setBalance(0);
     onVolumeChange?.(1.0);
+    onBalanceChange?.(0);
   };
 
   const handleVolumeChange = (value: number[]) => {
     const v = value[0];
     setVolume(v);
     onVolumeChange?.(v / 100);
+  };
+
+  const handleBalanceChange = (value: number[]) => {
+    const b = value[0];
+    setBalance(b);
+    onBalanceChange?.(b / 100);
   };
 
   return (
@@ -118,6 +148,17 @@ export function AudioEqualizer({ onEQChange, onVolumeChange, enhancements, onEnh
                   className="scale-75"
                 />
               </div>
+              <div className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-2">
+                <Label htmlFor="anti-feedback" className="text-xs cursor-pointer flex items-center gap-1.5">
+                  <ShieldAlert className="w-3 h-3 text-emerald-500" /> Anti-Feedback Notch Guard
+                </Label>
+                <Switch
+                  id="anti-feedback"
+                  checked={enhancements.antiFeedback ?? true}
+                  onCheckedChange={(v) => onEnhancementChange('antiFeedback', v)}
+                  className="scale-75"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -136,24 +177,46 @@ export function AudioEqualizer({ onEQChange, onVolumeChange, enhancements, onEnh
           </div>
         )}
 
-        {/* Volume Control */}
-        {onVolumeChange && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                <Volume2 className="w-3 h-3" /> Volume
-              </span>
-              <span className="text-[10px] text-muted-foreground tabular-nums">{volume}%</span>
+        {/* Volume & L/R Audio Balance */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {onVolumeChange && (
+            <div className="space-y-1.5 bg-muted/15 p-2.5 rounded-lg border border-border/40">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Volume2 className="w-3 h-3 text-primary" /> Master Volume
+                </span>
+                <span className="text-[10px] font-mono text-muted-foreground tabular-nums">{volume}%</span>
+              </div>
+              <Slider
+                min={0}
+                max={150}
+                step={2}
+                value={[volume]}
+                onValueChange={handleVolumeChange}
+              />
             </div>
-            <Slider
-              min={0}
-              max={200}
-              step={5}
-              value={[volume]}
-              onValueChange={handleVolumeChange}
-            />
-          </div>
-        )}
+          )}
+
+          {onBalanceChange && (
+            <div className="space-y-1.5 bg-muted/15 p-2.5 rounded-lg border border-border/40">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Sliders className="w-3 h-3 text-primary" /> L/R Balance
+                </span>
+                <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                  {balance === 0 ? 'Center' : balance < 0 ? `L ${Math.abs(balance)}%` : `R ${balance}%`}
+                </span>
+              </div>
+              <Slider
+                min={-100}
+                max={100}
+                step={5}
+                value={[balance]}
+                onValueChange={handleBalanceChange}
+              />
+            </div>
+          )}
+        </div>
 
         <div className="h-px bg-border" />
 

@@ -48,12 +48,16 @@ export interface AudioEnhancementSettings {
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGainControl: boolean;
+  highPassFilter?: boolean;
+  antiFeedback?: boolean;
 }
 
 const DEFAULT_ENHANCEMENTS: AudioEnhancementSettings = {
   noiseSuppression: true,
   echoCancellation: true,
   autoGainControl: true,
+  highPassFilter: true,
+  antiFeedback: true,
 };
 
 export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
@@ -65,8 +69,11 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const highPassFilterRef = useRef<BiquadFilterNode | null>(null);
+  const notchFilterRef = useRef<BiquadFilterNode | null>(null);
   const filtersRef = useRef<Record<EQBand, BiquadFilterNode | null>>({ bass: null, mid: null, treble: null });
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+  const pannerNodeRef = useRef<StereoPannerNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordableStreamRef = useRef<MediaStream | null>(null);
@@ -103,6 +110,13 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
 
+      // 80Hz High-pass filter to eliminate sub-bass rumble, microphone thumps, and low-frequency feedback
+      const highPass = ctx.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = 80;
+      highPass.Q.value = 0.707;
+      highPassFilterRef.current = highPass;
+
       // EQ filters
       const bass = ctx.createBiquadFilter();
       bass.type = 'lowshelf';
@@ -122,21 +136,36 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
 
       filtersRef.current = { bass, mid, treble };
 
-      // Dynamics compressor for auto-leveling
+      // Anti-feedback notch filter (cuts shrill 4.5kHz acoustic resonance)
+      const notch = ctx.createBiquadFilter();
+      notch.type = 'peaking';
+      notch.frequency.value = 4500;
+      notch.Q.value = 4.0;
+      notch.gain.value = -6; // Default active attenuation to stop mic screech
+      notchFilterRef.current = notch;
+
+      // Dynamics compressor for auto-leveling & voice balance
       const compressor = ctx.createDynamicsCompressor();
       compressor.threshold.value = -24;
-      compressor.knee.value = 12;
-      compressor.ratio.value = 4;
+      compressor.knee.value = 14;
+      compressor.ratio.value = 5;
       compressor.attack.value = 0.003;
       compressor.release.value = 0.25;
       compressorRef.current = compressor;
 
-      // Output gain for volume normalization
+      // Stereo Panner node for Left/Right audio balance
+      if (typeof ctx.createStereoPanner === 'function') {
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = 0;
+        pannerNodeRef.current = panner;
+      }
+
+      // Master output gain with safe ceiling
       const gainNode = ctx.createGain();
       gainNode.gain.value = 1.0;
       gainNodeRef.current = gainNode;
 
-      // Analyser for level metering
+      // Analyser for level metering and visualization
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.8;
@@ -155,18 +184,30 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
 
     const source = ctx.createMediaElementSource(audioEl);
     sourceNodeRef.current = source;
+    const highPass = highPassFilterRef.current;
     const { bass, mid, treble } = filtersRef.current;
+    const notch = notchFilterRef.current;
     const compressor = compressorRef.current;
+    const panner = pannerNodeRef.current;
     const gainNode = gainNodeRef.current;
     const analyser = analyserRef.current;
 
-    if (bass && mid && treble && compressor && gainNode && analyser) {
-      // Chain: source -> bass -> mid -> treble -> compressor -> gain -> analyser -> destination
-      source.connect(bass);
+    if (highPass && bass && mid && treble && notch && compressor && gainNode && analyser) {
+      // Chain: source -> highPass (80Hz rumble cut) -> bass -> mid -> treble -> notch (anti-feedback) -> compressor (auto-leveler) -> panner -> gain -> analyser -> destination
+      source.connect(highPass);
+      highPass.connect(bass);
       bass.connect(mid);
       mid.connect(treble);
-      treble.connect(compressor);
-      compressor.connect(gainNode);
+      treble.connect(notch);
+      notch.connect(compressor);
+
+      if (panner) {
+        compressor.connect(panner);
+        panner.connect(gainNode);
+      } else {
+        compressor.connect(gainNode);
+      }
+
       gainNode.connect(analyser);
       analyser.connect(ctx.destination);
 
@@ -218,9 +259,25 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
     }
   };
 
+  const setBalance = (panValue: number) => {
+    if (pannerNodeRef.current) {
+      // pan value between -1.0 (left) and 1.0 (right)
+      pannerNodeRef.current.pan.value = Math.max(-1, Math.min(1, panValue));
+    }
+  };
+
   const updateEnhancement = (key: keyof AudioEnhancementSettings, value: boolean) => {
     setEnhancements(prev => ({ ...prev, [key]: value }));
-    // Apply to active stream if exists
+
+    // Update Web Audio DSP nodes if applicable
+    if (key === 'highPassFilter' && highPassFilterRef.current) {
+      highPassFilterRef.current.frequency.value = value ? 80 : 10;
+    }
+    if (key === 'antiFeedback' && notchFilterRef.current) {
+      notchFilterRef.current.gain.value = value ? -8 : 0;
+    }
+
+    // Apply browser audio constraints to active stream if exists
     if (localStreamRef.current) {
       const track = localStreamRef.current.getAudioTracks()[0];
       if (track) {
@@ -498,11 +555,31 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
               noiseSuppression: settings.noiseSuppression,
               echoCancellation: settings.echoCancellation,
               autoGainControl: settings.autoGainControl,
+              channelCount: 1, // Strict mono voice eliminates stereo acoustic feedback
+              sampleRate: 48000,
+              // Chromium / WebKit specific anti-feedback & echo suppression flags
+              ...({
+                googEchoCancellation: settings.echoCancellation,
+                googAutoGainControl: settings.autoGainControl,
+                googNoiseSuppression: settings.noiseSuppression,
+                googHighpassFilter: settings.highPassFilter ?? true,
+                googAudioMirroring: false,
+              } as any),
             },
           });
         } catch (err) {
-          // Mobile browser fallback if advanced audio constraints fail
-          return await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Fallback with standard constraints if vendor flags are rejected
+          try {
+            return await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            });
+          } catch {
+            return await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
         }
       };
 
@@ -568,6 +645,7 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
     recordableStreamRef,
     setEQ,
     setVolume,
+    setBalance,
     enhancements,
     updateEnhancement,
     inputLevel,

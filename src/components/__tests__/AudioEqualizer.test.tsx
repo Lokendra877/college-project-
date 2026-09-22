@@ -46,7 +46,7 @@ describe('AudioEqualizer', () => {
 
   it('renders volume control when onVolumeChange provided', () => {
     render(<AudioEqualizer onEQChange={vi.fn()} onVolumeChange={vi.fn()} />);
-    expect(screen.getByText('Volume')).toBeInTheDocument();
+    expect(screen.getByText(/Volume/i)).toBeInTheDocument();
   });
 
   it('renders audio level meter when inputLevel > 0', () => {

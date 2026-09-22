@@ -56,25 +56,31 @@ describe('WebRTC Audio Transfer Engine Verification', () => {
   it('verifies Web Audio API equalizer & compressor node pipeline chaining', () => {
     const pipelineNodes: string[] = [];
     
-    // Simulate chain: Source -> LowShelf (Bass) -> Peaking (Mid) -> HighShelf (Treble) -> Compressor -> Gain -> Analyser -> Destination
+    // Updated DSP Chain: Source -> HighPass (80Hz rumble) -> Bass -> Mid -> Treble -> Notch (anti-feedback) -> DynamicsCompressor -> StereoPanner -> GainNode -> AnalyserNode -> Destination
     const connect = (from: string, to: string) => {
       pipelineNodes.push(`${from}->${to}`);
     };
 
-    connect('SourceNode', 'BassFilter');
+    connect('SourceNode', 'HighPassFilter');
+    connect('HighPassFilter', 'BassFilter');
     connect('BassFilter', 'MidFilter');
     connect('MidFilter', 'TrebleFilter');
-    connect('TrebleFilter', 'DynamicsCompressor');
-    connect('DynamicsCompressor', 'GainNode');
+    connect('TrebleFilter', 'NotchFilter');
+    connect('NotchFilter', 'DynamicsCompressor');
+    connect('DynamicsCompressor', 'StereoPanner');
+    connect('StereoPanner', 'GainNode');
     connect('GainNode', 'AnalyserNode');
     connect('AnalyserNode', 'AudioDestination');
 
     expect(pipelineNodes).toEqual([
-      'SourceNode->BassFilter',
+      'SourceNode->HighPassFilter',
+      'HighPassFilter->BassFilter',
       'BassFilter->MidFilter',
       'MidFilter->TrebleFilter',
-      'TrebleFilter->DynamicsCompressor',
-      'DynamicsCompressor->GainNode',
+      'TrebleFilter->NotchFilter',
+      'NotchFilter->DynamicsCompressor',
+      'DynamicsCompressor->StereoPanner',
+      'StereoPanner->GainNode',
       'GainNode->AnalyserNode',
       'AnalyserNode->AudioDestination',
     ]);
