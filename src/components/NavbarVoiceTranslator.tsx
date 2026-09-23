@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Languages, Mic, Volume2, Sparkles, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Languages, Volume2, VolumeX, Sparkles, X, Power } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -13,6 +13,9 @@ import type { TranscriptItem } from '@/hooks/useTranslation';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface NavbarVoiceTranslatorProps {
+  translatorEnabled?: boolean;
+  onToggleTranslator?: () => void;
+
   isTranscribing: boolean;
   currentSpokenText: string;
   speechError: string | null;
@@ -45,60 +48,74 @@ export function NavbarVoiceTranslator(props: NavbarVoiceTranslatorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showFloatingBanner, setShowFloatingBanner] = useState(true);
 
+  const isEnabled = props.translatorEnabled ?? true;
   const hasActiveText = Boolean(props.translatedSubtitle || props.subtitle);
 
   return (
     <>
-      {/* Navbar Trigger Button */}
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
+      <div className="flex items-center gap-1">
+        {/* Quick ON / OFF Pill Button */}
+        {props.onToggleTranslator && (
           <Button
             variant="outline"
             size="sm"
-            className={`h-9 px-3 gap-2 border transition-all text-xs font-medium rounded-xl shadow-sm ${
-              props.isTranscribing
-                ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
-                : hasActiveText
-                ? 'border-primary/60 bg-primary/10 text-primary hover:bg-primary/20'
-                : 'hover:bg-muted/60 text-foreground'
+            onClick={props.onToggleTranslator}
+            className={`h-8 px-2.5 rounded-lg text-xs font-semibold gap-1.5 transition-all shadow-none ${
+              isEnabled
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-800'
+                : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800'
             }`}
-            title="Open Live Voice Translator"
+            title={isEnabled ? 'Click to turn Voice Translator OFF' : 'Click to turn Voice Translator ON'}
           >
-            <div className="relative flex items-center justify-center">
-              <Languages className="w-4 h-4 text-primary" />
-              {props.isTranscribing && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-ping" />
-              )}
-            </div>
-
-            <span className="hidden sm:inline font-semibold">
-              {props.sourceLanguage} → {props.targetLanguage || 'English'}
-            </span>
-            <span className="sm:hidden font-semibold">Translator</span>
-
-            {props.ttsEnabled && (
-              <Volume2 className="w-3.5 h-3.5 text-primary opacity-80" />
-            )}
+            <span className={`w-2 h-2 rounded-full ${isEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+            <span>Translator {isEnabled ? 'ON' : 'OFF'}</span>
           </Button>
-        </SheetTrigger>
+        )}
 
-        {/* Slide-over Full Drawer */}
-        <SheetContent side="right" className="w-full sm:max-w-xl p-0 overflow-y-auto bg-background">
-          <div className="p-4 sm:p-6 space-y-4">
-            <SheetHeader className="pb-2">
-              <SheetTitle className="text-lg font-heading flex items-center gap-2">
-                <Languages className="w-5 h-5 text-primary" /> Live Voice Translation Panel
-              </SheetTitle>
-            </SheetHeader>
+        {/* Navbar Trigger Button to Open Panel */}
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={`h-8 px-3 gap-1.5 border transition-all text-xs font-medium rounded-lg shadow-none ${
+                props.isTranscribing
+                  ? 'border-red-500 bg-red-50 text-red-600 hover:bg-red-100'
+                  : isEnabled && hasActiveText
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  : 'hover:bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+              title="Open Live Voice Translator settings and logs"
+            >
+              <Languages className={`w-3.5 h-3.5 ${isEnabled ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span className="hidden md:inline font-semibold">
+                {props.sourceLanguage} → {props.targetLanguage || 'English'}
+              </span>
+              <span className="md:hidden font-semibold">Voice AI</span>
+              {isEnabled && props.ttsEnabled && (
+                <Volume2 className="w-3 h-3 text-emerald-600 opacity-80" />
+              )}
+            </Button>
+          </SheetTrigger>
 
-            <VoiceTranslatorHub {...props} />
-          </div>
-        </SheetContent>
-      </Sheet>
+          {/* Slide-over Full Drawer */}
+          <SheetContent side="right" className="w-full sm:max-w-xl p-0 overflow-y-auto bg-background">
+            <div className="p-4 sm:p-6 space-y-4">
+              <SheetHeader className="pb-2">
+                <SheetTitle className="text-lg font-heading flex items-center gap-2">
+                  <Languages className="w-5 h-5 text-primary" /> Live Voice Translation Panel
+                </SheetTitle>
+              </SheetHeader>
+
+              <VoiceTranslatorHub {...props} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
 
       {/* Slim Floating Real-time Subtitle Banner on Main Screen */}
       <AnimatePresence>
-        {hasActiveText && showFloatingBanner && (
+        {isEnabled && hasActiveText && showFloatingBanner && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -140,9 +157,9 @@ export function NavbarVoiceTranslator(props: NavbarVoiceTranslatorProps) {
                 </p>
               )}
 
-              {/* Original Spoken Line */}
+              {/* Original Spoken Text */}
               {props.subtitle && (
-                <p className="text-[11px] text-muted-foreground italic leading-tight">
+                <p className="text-muted-foreground italic text-[11px]">
                   "{props.subtitle}"
                 </p>
               )}

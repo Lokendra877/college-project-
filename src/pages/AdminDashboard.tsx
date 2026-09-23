@@ -142,13 +142,8 @@ export default function AdminDashboard() {
   const [recordings, setRecordings] = useState<any[]>([]);
 
   const {
-    isTranscribing,
-    currentText: currentSpokenText,
-    speechError,
-    toggleTranscription,
-  } = useSpeechTranscription(sessionId, false, speakerLanguage, 'Admin (Laptop)');
-
-  const {
+    translatorEnabled,
+    toggleTranslator,
     subtitle,
     translatedSubtitle,
     sourceLanguage: detectedSourceLang,
@@ -158,6 +153,13 @@ export default function AdminDashboard() {
     clearHistory,
     testAudioVoice,
   } = useTranscriptListener(sessionId, targetLanguage, ttsEnabled, ttsRate, ttsVolume);
+
+  const {
+    isTranscribing,
+    currentText: currentSpokenText,
+    speechError,
+    toggleTranscription,
+  } = useSpeechTranscription(sessionId, false, speakerLanguage, 'Admin (Laptop)', translatorEnabled);
 
   const prevSpeakerRef = useRef<string | null>(null);
 
@@ -678,6 +680,8 @@ export default function AdminDashboard() {
 
             {/* Voice Translator Hub Button */}
             <NavbarVoiceTranslator
+              translatorEnabled={translatorEnabled}
+              onToggleTranslator={toggleTranslator}
               isTranscribing={isTranscribing}
               currentSpokenText={currentSpokenText}
               speechError={speechError}

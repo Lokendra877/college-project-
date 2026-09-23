@@ -63,13 +63,8 @@ export default function SessionPage() {
   const { isStreaming, isReceiving, micError } = useWebRTC(sessionId, amISpeaking);
 
   const {
-    isTranscribing,
-    currentText: currentSpokenText,
-    speechError,
-    toggleTranscription,
-  } = useSpeechTranscription(sessionId, amISpeaking, speakerLanguage, userName || 'User');
-
-  const {
+    translatorEnabled,
+    toggleTranslator,
     subtitle,
     translatedSubtitle,
     sourceLanguage: detectedSourceLang,
@@ -84,6 +79,19 @@ export default function SessionPage() {
     ttsEnabled,
     ttsRate,
     ttsVolume
+  );
+
+  const {
+    isTranscribing,
+    currentText: currentSpokenText,
+    speechError,
+    toggleTranscription,
+  } = useSpeechTranscription(
+    sessionId,
+    amISpeaking,
+    speakerLanguage,
+    userName || 'User',
+    translatorEnabled
   );
 
   if (loading) {
@@ -268,6 +276,8 @@ export default function SessionPage() {
           </div>
           <div className="flex items-center gap-2">
             <NavbarVoiceTranslator
+              translatorEnabled={translatorEnabled}
+              onToggleTranslator={toggleTranslator}
               isTranscribing={isTranscribing}
               currentSpokenText={currentSpokenText}
               speechError={speechError}
