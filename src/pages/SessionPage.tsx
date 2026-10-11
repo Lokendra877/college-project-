@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Hand, Loader2, Mic, Mic2, MessageCircle, BarChart3, StopCircle, Mail, Settings, Trash2, Shield, PlayCircle, SkipForward, X as XIcon } from 'lucide-react';
+import { Hand, Loader2, Mic, Mic2, MessageCircle, BarChart3, StopCircle, Settings, Trash2, Shield, PlayCircle, SkipForward, X as XIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 function getCookie(name: string): string | null {
@@ -45,12 +45,9 @@ export default function SessionPage() {
   const { requestToSpeak, grantMic, revokeMic, skipSpeaker, removeFromQueue, grantNextSpeaker, moderatorSpeakNow, deviceId } = useQueueActions(sessionId);
 
   const savedName = getCookie('smartmic_user_name') || '';
-  const savedEmail = getCookie('smartmic_user_email') || '';
 
   const [userName, setUserName] = useState(savedName);
-  const [userEmail, setUserEmail] = useState(savedEmail);
-  const [emailError, setEmailError] = useState('');
-  const [hasJoined, setHasJoined] = useState(!!savedName && !!savedEmail);
+  const [hasJoined, setHasJoined] = useState(!!savedName);
   const [targetLanguage, setTargetLanguage] = useState<string | null>('English');
   const [speakerLanguage, setSpeakerLanguage] = useState<string>('Hindi');
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -143,42 +140,14 @@ export default function SessionPage() {
     ? waitingQueue.findIndex(e => e.id === myEntry.id) + 1
     : null;
 
-  const validateEmail = (email: string): boolean => {
-    const trimmed = email.trim();
-    // Basic format check
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-    if (!emailRegex.test(trimmed)) {
-      setEmailError('Please enter a valid email address');
-      return false;
-    }
-    // Block disposable/temporary email domains
-    const disposableDomains = [
-      'tempmail.com', 'throwaway.email', 'guerrillamail.com', 'mailinator.com',
-      'yopmail.com', 'sharklasers.com', 'guerrillamailblock.com', 'grr.la',
-      'dispostable.com', 'trashmail.com', 'fakeinbox.com', 'tempail.com',
-      'temp-mail.org', 'minutemail.com', 'maildrop.cc', 'harakirimail.com',
-      'getairmail.com', 'meltmail.com', 'discard.email', '10minutemail.com',
-      'getnada.com', 'mohmal.com', 'emailondeck.com', 'trashmail.me',
-    ];
-    const domain = trimmed.split('@')[1]?.toLowerCase();
-    if (disposableDomains.includes(domain)) {
-      setEmailError('Disposable email addresses are not allowed');
-      return false;
-    }
-    setEmailError('');
-    return true;
-  };
-
   const handleJoin = () => {
-    if (!userName.trim() || !userEmail.trim()) return;
-    if (!validateEmail(userEmail)) return;
+    if (!userName.trim()) return;
     setCookie('smartmic_user_name', userName.trim());
-    setCookie('smartmic_user_email', userEmail.trim());
     setHasJoined(true);
   };
 
   const handleRequestSpeak = async () => {
-    await requestToSpeak(userName, userEmail);
+    await requestToSpeak(userName.trim());
   };
 
   const handleStopSpeaking = async () => {
@@ -187,13 +156,11 @@ export default function SessionPage() {
     }
   };
 
-  const hasSavedIdentity = !!(getCookie('smartmic_user_name') && getCookie('smartmic_user_email'));
+  const hasSavedIdentity = !!getCookie('smartmic_user_name');
 
   const handleClearIdentity = () => {
     setCookie('smartmic_user_name', '', -1);
-    setCookie('smartmic_user_email', '', -1);
     setUserName('');
-    setUserEmail('');
     setHasJoined(false);
   };
 
@@ -203,7 +170,6 @@ export default function SessionPage() {
       document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
     });
     setUserName('');
-    setUserEmail('');
     setHasJoined(false);
   };
 
@@ -220,46 +186,36 @@ export default function SessionPage() {
                 <Mic2 className="w-8 h-8 text-primary-foreground" />
               </div>
               <CardTitle className="font-heading text-2xl">{session.title}</CardTitle>
-              <p className="text-sm text-muted-foreground">Enter your details to join</p>
+              <p className="text-sm text-muted-foreground">Enter your name to join</p>
             </CardHeader>
             <CardContent className="space-y-4">
               <Input
                 placeholder="Your name"
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
                 autoFocus
-                className="text-center text-lg"
+                className="text-center text-lg h-12 rounded-xl"
               />
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="Your email"
-                  value={userEmail}
-                  onChange={(e) => { setUserEmail(e.target.value); setEmailError(''); }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                  className={`text-center text-lg pl-10 ${emailError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                />
-              </div>
-              {emailError && (
-                <p className="text-xs text-destructive text-center -mt-2">{emailError}</p>
-              )}
               {hasSavedIdentity && (
                 <button
                   type="button"
                   onClick={handleClearIdentity}
                   className="w-full text-center text-xs text-muted-foreground hover:text-primary underline underline-offset-2 transition-colors"
                 >
-                  Not you? Clear saved details
+                  Not you? Clear saved name
                 </button>
               )}
-              <Button className="w-full gradient-primary text-primary-foreground font-heading font-semibold text-lg shadow-colored hover:opacity-90 transition-opacity h-12" onClick={handleJoin} disabled={!userName.trim() || !userEmail.trim()}>
+              <Button
+                className="w-full gradient-primary text-primary-foreground font-heading font-semibold text-lg shadow-colored hover:opacity-90 transition-opacity h-12 rounded-xl"
+                onClick={handleJoin}
+                disabled={!userName.trim()}
+              >
                 Join Session
               </Button>
             </CardContent>
           </Card>
         </motion.div>
-      </div>
     );
   }
 
@@ -364,7 +320,7 @@ export default function SessionPage() {
                   <Button
                     size="sm"
                     className="gradient-primary text-primary-foreground font-heading font-semibold shadow-colored hover:opacity-90"
-                    onClick={() => moderatorSpeakNow(userName, userEmail)}
+                    onClick={() => moderatorSpeakNow(userName)}
                   >
                     <Mic className="w-4 h-4 mr-1" /> Speak Now
                   </Button>
