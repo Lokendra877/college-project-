@@ -216,6 +216,7 @@ export default function SessionPage() {
             </CardContent>
           </Card>
         </motion.div>
+      </div>
     );
   }
 
