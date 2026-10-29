@@ -165,9 +165,19 @@ export default function AdminDashboard() {
 
   const prevSpeakerRef = useRef<string | null>(null);
 
-  // Live Speaker & Queue Metrics
-  const currentSpeaker = queue.find((e) => e.status === 'speaking');
-  const waitingCount = queue.filter((e) => e.status === 'waiting').length;
+  // Live Speaker & Queue Metrics (deduplicated by user_name to prevent double request display)
+  const deduplicatedQueue = useMemo(() => {
+    const seen = new Set<string>();
+    return queue.filter((entry) => {
+      const key = entry.user_name ? entry.user_name.trim().toLowerCase() : entry.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [queue]);
+
+  const currentSpeaker = deduplicatedQueue.find((e) => e.status === 'speaking');
+  const waitingCount = deduplicatedQueue.filter((e) => e.status === 'waiting').length;
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Real-time formatted clock
@@ -334,9 +344,18 @@ export default function AdminDashboard() {
     }
   };
 
-  // Real requests from speakerLog (including done and skipped)
+  // Real requests from speakerLog (including done and skipped), deduplicating active requests
   const allRequests = useMemo(() => {
-    return analyticsData.speakerLog || [];
+    const raw = analyticsData.speakerLog || [];
+    const seen = new Set<string>();
+    return raw.filter((entry) => {
+      if (entry.status === 'waiting' || entry.status === 'speaking') {
+        const key = `${entry.user_name.trim().toLowerCase()}_active`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+      }
+      return true;
+    });
   }, [analyticsData.speakerLog]);
 
   // Counts for pills
@@ -386,7 +405,7 @@ export default function AdminDashboard() {
   }, [allRequests]);
 
   // Current real active concurrent audience
-  const realConcurrentAudience = queue.length + (currentSpeaker ? 1 : 0);
+  const realConcurrentAudience = deduplicatedQueue.length + (currentSpeaker ? 1 : 0);
 
   // Real Charts Data (Generated from actual timestamps)
   const chartData = useMemo(() => {
@@ -916,7 +935,7 @@ export default function AdminDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {queue.slice(0, 5).map((entry, index) => {
+                          {deduplicatedQueue.slice(0, 5).map((entry, index) => {
                             const isSpeaking = entry.status === 'speaking';
                             return (
                               <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
@@ -966,7 +985,7 @@ export default function AdminDashboard() {
                             );
                           })}
 
-                          {queue.length === 0 && (
+                          {deduplicatedQueue.length === 0 && (
                             <tr>
                               <td colSpan={5} className="text-center py-10 text-slate-400">
                                 <Clock className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
@@ -1738,7 +1757,7 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-5">
                   <QueueList
-                    queue={queue}
+                    queue={deduplicatedQueue}
                     isAdmin
                     onSkip={(id) => skipSpeaker(id).then(() => setTimeout(grantNextSpeaker, 500))}
                     onRemove={removeFromQueue}

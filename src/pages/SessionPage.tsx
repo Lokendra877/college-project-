@@ -95,13 +95,27 @@ export default function SessionPage() {
 
   const [userName, setUserName] = useState(savedName);
   const [hasJoined, setHasJoined] = useState(!!savedName);
+  const [isRequestingSpeak, setIsRequestingSpeak] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<string | null>('English');
   const [speakerLanguage, setSpeakerLanguage] = useState<string>('Hindi');
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [ttsRate, setTtsRate] = useState(1.0);
   const [ttsVolume, setTtsVolume] = useState(1.0);
 
-  const myEntry = useMemo(() => queue.find(e => e.device_id === deviceId), [queue, deviceId]);
+  const deduplicatedQueue = useMemo(() => {
+    const seen = new Set<string>();
+    return queue.filter((entry) => {
+      const key = entry.user_name ? entry.user_name.trim().toLowerCase() : entry.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [queue]);
+
+  const myEntry = useMemo(
+    () => deduplicatedQueue.find(e => e.device_id === deviceId || (userName && e.user_name.trim().toLowerCase() === userName.trim().toLowerCase())),
+    [deduplicatedQueue, deviceId, userName]
+  );
   const amIModerator = (myEntry as any)?.is_moderator === true;
   const amISpeaking = myEntry?.status === 'speaking' || false;
   const { isStreaming, isReceiving, micError } = useWebRTC(sessionId, amISpeaking);
@@ -195,7 +209,13 @@ export default function SessionPage() {
   };
 
   const handleRequestSpeak = async () => {
-    await requestToSpeak(userName.trim());
+    if (isRequestingSpeak || !userName.trim()) return;
+    setIsRequestingSpeak(true);
+    try {
+      await requestToSpeak(userName.trim());
+    } finally {
+      setIsRequestingSpeak(false);
+    }
   };
 
   const handleStopSpeaking = async () => {
@@ -470,11 +490,21 @@ export default function SessionPage() {
         {!myEntry && (
           <Button
             size="lg"
-            className="w-full mb-6 h-14 text-lg font-heading font-semibold gradient-primary text-primary-foreground shadow-colored hover:opacity-90 transition-opacity"
+            disabled={isRequestingSpeak}
+            className="w-full mb-6 h-14 text-lg font-heading font-semibold gradient-primary text-primary-foreground shadow-colored hover:opacity-90 transition-opacity gap-2"
             onClick={handleRequestSpeak}
           >
-            <Hand className="w-5 h-5 mr-2" />
-            Request to Speak
+            {isRequestingSpeak ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Submitting Request...</span>
+              </>
+            ) : (
+              <>
+                <Hand className="w-5 h-5 mr-1" />
+                <span>Request to Speak</span>
+              </>
+            )}
           </Button>
         )}
 
@@ -494,10 +524,10 @@ export default function SessionPage() {
 
           <TabsContent value="queue" className="mt-4">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Speaker Queue ({queue.length})
+              Speaker Queue ({deduplicatedQueue.length})
             </h2>
             <QueueList
-              queue={queue}
+              queue={deduplicatedQueue}
               currentDeviceId={deviceId}
               isModerator={amIModerator}
               onSkip={amIModerator ? (id) => skipSpeaker(id).then(() => setTimeout(grantNextSpeaker, 500)) : undefined}

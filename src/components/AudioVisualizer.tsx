@@ -71,7 +71,8 @@ export function AudioVisualizer({ analyserNode, isReceiving }: AudioVisualizerPr
       analyserNode.getByteFrequencyData(freqData);
       analyserNode.getByteTimeDomainData(timeData);
 
-      if (frameCount % 3 === 0) {
+      // Throttle React state metric updates to ~4 FPS (canvas continues drawing at 60 FPS)
+      if (frameCount % 15 === 0) {
         let bassSum = 0, bassCount = 0;
         let bodySum = 0, bodyCount = 0;
         let presSum = 0, presCount = 0;

@@ -8,91 +8,102 @@ const RATE_LIMIT_COOLDOWN_MS = 30_000; // 30s between requests per device
 export function useQueueActions(sessionId: string | undefined) {
   const deviceId = getDeviceId();
   const lastRequestRef = useRef<number>(0);
+  const isSubmittingRef = useRef<boolean>(false);
 
   const requestToSpeak = useCallback(async (userName: string, userEmail?: string) => {
     if (!sessionId) return;
+    const cleanName = userName.trim();
+    if (!cleanName) return;
 
-    // Client-side rate limit
-    const now = Date.now();
-    const elapsed = now - lastRequestRef.current;
-    if (elapsed < RATE_LIMIT_COOLDOWN_MS) {
-      const waitSec = Math.ceil((RATE_LIMIT_COOLDOWN_MS - elapsed) / 1000);
-      toast.error(`Please wait ${waitSec}s before requesting again`);
-      return;
-    }
+    // In-flight mutex to prevent double-tap submissions
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
 
-    // Check for duplicate active request
-    const { data: existing } = await supabase
-      .from('speaker_queue')
-      .select('id')
-      .eq('session_id', sessionId)
-      .eq('device_id', deviceId)
-      .in('status', ['waiting', 'speaking']);
-
-    if (existing && existing.length > 0) {
-      toast.error('You already have an active request');
-      return;
-    }
-
-    // Server-side cooldown: check last finished/skipped entry from this device
-    const { data: recent } = await supabase
-      .from('speaker_queue')
-      .select('finished_speaking_at')
-      .eq('session_id', sessionId)
-      .eq('device_id', deviceId)
-      .in('status', ['done', 'skipped'])
-      .order('finished_speaking_at', { ascending: false })
-      .limit(1);
-
-    if (recent && recent.length > 0 && recent[0].finished_speaking_at) {
-      const finishedAt = new Date(recent[0].finished_speaking_at).getTime();
-      const serverElapsed = now - finishedAt;
-      if (serverElapsed < RATE_LIMIT_COOLDOWN_MS) {
-        const waitSec = Math.ceil((RATE_LIMIT_COOLDOWN_MS - serverElapsed) / 1000);
+    try {
+      // Client-side rate limit
+      const now = Date.now();
+      const elapsed = now - lastRequestRef.current;
+      if (elapsed < RATE_LIMIT_COOLDOWN_MS) {
+        const waitSec = Math.ceil((RATE_LIMIT_COOLDOWN_MS - elapsed) / 1000);
         toast.error(`Please wait ${waitSec}s before requesting again`);
         return;
       }
-    }
 
-    // Concurrency-safe atomic position assignment via RPC with fallback
-    let insertError = null;
-    const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('join_speaker_queue', {
-      p_session_id: sessionId,
-      p_user_name: userName,
-      p_user_email: userEmail || null,
-      p_device_id: deviceId,
-    });
-
-    if (rpcError) {
-      // Fallback: client-side position calculation
-      const { data: maxPos } = await supabase
+      // Check for duplicate active request by deviceId OR userName
+      const { data: existing } = await supabase
         .from('speaker_queue')
-        .select('position')
+        .select('id, user_name, device_id')
         .eq('session_id', sessionId)
-        .order('position', { ascending: false })
+        .or(`device_id.eq.${deviceId},user_name.ilike.${cleanName}`)
+        .in('status', ['waiting', 'speaking']);
+
+      if (existing && existing.length > 0) {
+        toast.error('You already have an active request in the queue');
+        return;
+      }
+
+      // Server-side cooldown: check last finished/skipped entry from this device
+      const { data: recent } = await supabase
+        .from('speaker_queue')
+        .select('finished_speaking_at')
+        .eq('session_id', sessionId)
+        .eq('device_id', deviceId)
+        .in('status', ['done', 'skipped'])
+        .order('finished_speaking_at', { ascending: false })
         .limit(1);
 
-      const nextPosition = (maxPos && maxPos.length > 0) ? maxPos[0].position + 1 : 1;
+      if (recent && recent.length > 0 && recent[0].finished_speaking_at) {
+        const finishedAt = new Date(recent[0].finished_speaking_at).getTime();
+        const serverElapsed = now - finishedAt;
+        if (serverElapsed < RATE_LIMIT_COOLDOWN_MS) {
+          const waitSec = Math.ceil((RATE_LIMIT_COOLDOWN_MS - serverElapsed) / 1000);
+          toast.error(`Please wait ${waitSec}s before requesting again`);
+          return;
+        }
+      }
 
-      const { error } = await supabase
-        .from('speaker_queue')
-        .insert({
-          session_id: sessionId,
-          user_name: userName,
-          user_email: userEmail || null,
-          device_id: deviceId,
-          position: nextPosition,
-          status: 'waiting',
-        } as any);
+      // Concurrency-safe atomic position assignment via RPC with fallback
+      let insertError = null;
+      const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('join_speaker_queue', {
+        p_session_id: sessionId,
+        p_user_name: cleanName,
+        p_user_email: userEmail || null,
+        p_device_id: deviceId,
+      });
 
-      insertError = error;
-    }
+      if (rpcError) {
+        // Fallback: client-side position calculation
+        const { data: maxPos } = await supabase
+          .from('speaker_queue')
+          .select('position')
+          .eq('session_id', sessionId)
+          .order('position', { ascending: false })
+          .limit(1);
 
-    if (insertError) {
-      toast.error('Failed to join queue');
-    } else {
-      lastRequestRef.current = Date.now();
-      toast.success('Added to speaker queue!');
+        const nextPosition = (maxPos && maxPos.length > 0) ? maxPos[0].position + 1 : 1;
+
+        const { error } = await supabase
+          .from('speaker_queue')
+          .insert({
+            session_id: sessionId,
+            user_name: cleanName,
+            user_email: userEmail || null,
+            device_id: deviceId,
+            position: nextPosition,
+            status: 'waiting',
+          } as any);
+
+        insertError = error;
+      }
+
+      if (insertError) {
+        toast.error('Failed to join queue');
+      } else {
+        lastRequestRef.current = Date.now();
+        toast.success('Added to speaker queue!');
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   }, [sessionId, deviceId]);
 

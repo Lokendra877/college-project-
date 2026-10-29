@@ -238,11 +238,22 @@ export function useWebRTC(sessionId: string | undefined, isSpeaking: boolean) {
     if (!analyser) return;
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    const tick = () => {
+    let lastUpdate = 0;
+    let lastLevel = -1;
+
+    const tick = (now: number) => {
       if (!mountedRef.current || !analyserRef.current) return;
-      analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
-      safeSet(setInputLevel, Math.round((avg / 255) * 100));
+      // Throttle metering state updates to ~8 FPS to prevent React re-render thrashing
+      if (now - lastUpdate >= 120) {
+        lastUpdate = now;
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
+        const newLevel = Math.round((avg / 255) * 100);
+        if (Math.abs(newLevel - lastLevel) >= 3 || (newLevel === 0 && lastLevel !== 0)) {
+          lastLevel = newLevel;
+          safeSet(setInputLevel, newLevel);
+        }
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
