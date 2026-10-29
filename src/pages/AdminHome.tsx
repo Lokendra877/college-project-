@@ -107,21 +107,89 @@ export default function AdminHome() {
 
   const deleteSession = async (sessionId: string) => {
     setDeleting(true);
-    const { error } = await supabase
-      .from('sessions')
-      .delete()
-      .eq('id', sessionId);
+    try {
+      // 1. Clear foreign key reference from current_speaker_id
+      await supabase
+        .from('sessions')
+        .update({ current_speaker_id: null })
+        .eq('id', sessionId);
 
-    if (error) {
-      toast.error('Failed to delete session');
+      // 2. Cascade delete poll votes and session polls
+      const { data: polls } = await supabase
+        .from('session_polls')
+        .select('id')
+        .eq('session_id', sessionId);
+
+      if (polls && polls.length > 0) {
+        const pollIds = polls.map((p) => p.id);
+        await supabase
+          .from('poll_votes')
+          .delete()
+          .in('poll_id', pollIds);
+        await supabase
+          .from('session_polls')
+          .delete()
+          .eq('session_id', sessionId);
+      }
+
+      // 3. Cascade delete question upvotes and audience questions
+      const { data: questions } = await supabase
+        .from('audience_questions')
+        .select('id')
+        .eq('session_id', sessionId);
+
+      if (questions && questions.length > 0) {
+        const questionIds = questions.map((q) => q.id);
+        await supabase
+          .from('question_upvotes')
+          .delete()
+          .in('question_id', questionIds);
+        await supabase
+          .from('audience_questions')
+          .delete()
+          .eq('session_id', sessionId);
+      }
+
+      // 4. Delete audio recordings
+      await supabase
+        .from('audio_recordings')
+        .delete()
+        .eq('session_id', sessionId);
+
+      // 5. Delete user notifications
+      await supabase
+        .from('user_notifications')
+        .delete()
+        .eq('session_id', sessionId);
+
+      // 6. Delete speaker queue entries
+      await supabase
+        .from('speaker_queue')
+        .delete()
+        .eq('session_id', sessionId);
+
+      // 7. Finally delete the session row itself
+      const { error } = await supabase
+        .from('sessions')
+        .delete()
+        .eq('id', sessionId);
+
+      if (error) {
+        console.error('Delete session error:', error);
+        toast.error(`Failed to delete session: ${error.message || 'Database error'}`);
+        setDeleting(false);
+        return;
+      }
+
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      setDeleteConfirm(null);
       setDeleting(false);
-      return;
+      toast.success('Session deleted successfully');
+    } catch (err: any) {
+      console.error('Exception during delete session:', err);
+      toast.error(`Error deleting session: ${err?.message || 'Unknown error'}`);
+      setDeleting(false);
     }
-
-    setSessions(prev => prev.filter(s => s.id !== sessionId));
-    setDeleteConfirm(null);
-    setDeleting(false);
-    toast.success('Session deleted');
   };
 
   const endSession = async (sessionId: string) => {
