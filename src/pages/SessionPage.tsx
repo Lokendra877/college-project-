@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useSession } from '@/hooks/useSession';
 import { useQueueActions } from '@/hooks/useQueueActions';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSpeechTranscription, useTranscriptListener } from '@/hooks/useTranslation';
+import { validateDynamicQrToken, isSessionVerified, markSessionVerified } from '@/lib/dynamicQrService';
 import { QueueList } from '@/components/QueueList';
 import { MicStatus } from '@/components/MicStatus';
 import { SpeakerTimer } from '@/components/SpeakerTimer';
@@ -17,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Hand, Loader2, Mic, Mic2, MessageCircle, BarChart3, StopCircle, Settings, Trash2, Shield, PlayCircle, SkipForward, X as XIcon } from 'lucide-react';
+import { Hand, Loader2, Mic, Mic2, MessageCircle, BarChart3, StopCircle, Settings, Trash2, Shield, ShieldAlert, ShieldCheck, QrCode, RefreshCw, PlayCircle, SkipForward, X as XIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 function getCookie(name: string): string | null {
@@ -40,11 +41,57 @@ function setCookie(name: string, value: string, days: number = 365) {
 
 export default function SessionPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { sessionId } = useParams<{ sessionId: string }>();
+  const qrToken = searchParams.get('dqr') || searchParams.get('token');
+
   const { session, queue, loading } = useSession(sessionId);
   const { requestToSpeak, grantMic, revokeMic, skipSpeaker, removeFromQueue, grantNextSpeaker, moderatorSpeakNow, deviceId } = useQueueActions(sessionId);
 
   const savedName = getCookie('smartmic_user_name') || '';
+
+  // Dynamic 30s Rotating QR Verification State
+  const [isQrVerified, setIsQrVerified] = useState<boolean>(() => {
+    if (!sessionId) return false;
+    if (isSessionVerified(sessionId)) return true;
+    if (qrToken) {
+      const res = validateDynamicQrToken(sessionId, qrToken);
+      if (res.isValid) {
+        markSessionVerified(sessionId);
+        return true;
+      }
+    }
+    return false;
+  });
+
+  const [qrError, setQrError] = useState<string | null>(() => {
+    if (!sessionId) return null;
+    if (isSessionVerified(sessionId)) return null;
+    if (qrToken) {
+      const res = validateDynamicQrToken(sessionId, qrToken);
+      if (!res.isValid) return res.message;
+    }
+    return 'Please scan the live 30-second dynamic QR code displayed on the auditorium screen to join.';
+  });
+
+  useEffect(() => {
+    if (!sessionId || isQrVerified) return;
+    if (isSessionVerified(sessionId)) {
+      setIsQrVerified(true);
+      setQrError(null);
+      return;
+    }
+    if (qrToken) {
+      const res = validateDynamicQrToken(sessionId, qrToken);
+      if (res.isValid) {
+        markSessionVerified(sessionId);
+        setIsQrVerified(true);
+        setQrError(null);
+      } else {
+        setQrError(res.message);
+      }
+    }
+  }, [sessionId, qrToken, isQrVerified]);
 
   const [userName, setUserName] = useState(savedName);
   const [hasJoined, setHasJoined] = useState(!!savedName);
@@ -143,6 +190,7 @@ export default function SessionPage() {
   const handleJoin = () => {
     if (!userName.trim()) return;
     setCookie('smartmic_user_name', userName.trim());
+    if (sessionId) markSessionVerified(sessionId);
     setHasJoined(true);
   };
 
@@ -172,6 +220,69 @@ export default function SessionPage() {
     setUserName('');
     setHasJoined(false);
   };
+
+  // 30s Dynamic Rotating QR Security Check
+  if (!isQrVerified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-hero px-4 relative overflow-hidden">
+        <div className="absolute top-20 -left-20 w-72 h-72 bg-destructive/10 blob-shape blur-[80px]" />
+        <div className="absolute bottom-20 -right-20 w-64 h-64 bg-primary/10 blob-shape-2 blur-[80px]" />
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 200 }}
+          className="relative z-10 w-full max-w-md"
+        >
+          <Card className="shadow-2xl border border-destructive/20 overflow-hidden bg-card/95 backdrop-blur-md">
+            <div className="bg-destructive/10 border-b border-destructive/20 p-5 text-center">
+              <div className="mx-auto w-14 h-14 rounded-2xl bg-destructive/15 text-destructive flex items-center justify-center shadow-inner mb-3">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <h2 className="font-heading text-xl font-bold text-foreground">
+                {qrToken ? 'QR Code Expired' : 'Auditorium Access Restricted'}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">30-Second Dynamic Anti-Proxy Security</p>
+            </div>
+
+            <CardContent className="p-6 space-y-4 text-center">
+              <p className="text-sm text-foreground/90 leading-relaxed font-medium">
+                {qrError || 'Please scan the live QR code currently displayed on the auditorium screen.'}
+              </p>
+
+              <div className="bg-muted/50 rounded-xl p-3.5 border border-border/60 text-xs text-muted-foreground space-y-1.5 text-left">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Why is this required?</span>
+                </div>
+                <p className="leading-relaxed">
+                  To prevent unauthorized access by outside persons, this auditorium uses a rotating QR code that changes every <strong>30 seconds</strong>. Screenshots, WhatsApp forwarded links, and bookmarked URLs automatically expire.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Button
+                  onClick={() => window.location.reload()}
+                  className="w-full gradient-primary text-primary-foreground font-semibold h-11 rounded-xl shadow-md gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>I Scanned a New Code (Refresh)</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/app')}
+                  className="w-full text-xs h-9 rounded-xl border-border"
+                >
+                  Return to Home
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (!hasJoined) {
     return (

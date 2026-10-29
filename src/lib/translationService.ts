@@ -1,4 +1,5 @@
-// Translation service supporting ultra-fast multi-engine fallback and zero-cost real-time translation
+// ChatGPT (OpenAI) Real-Time Voice Translation Service
+// Strictly powered by OpenAI ChatGPT API (gpt-4o-mini) for ultra-accurate speech translation
 
 export interface LanguageInfo {
   name: string;
@@ -32,48 +33,72 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
   { name: 'Dutch', code: 'nl', speechCode: 'nl-NL' },
 ];
 
-export const LANGUAGE_NAMES = SUPPORTED_LANGUAGES.map(l => l.name);
+export const LANGUAGE_NAMES = SUPPORTED_LANGUAGES.map((l) => l.name);
 
 export function getLanguageInfo(nameOrCode: string): LanguageInfo {
   const normalized = nameOrCode.trim().toLowerCase();
   const match = SUPPORTED_LANGUAGES.find(
-    l => l.name.toLowerCase() === normalized || l.code.toLowerCase() === normalized || l.speechCode.toLowerCase() === normalized
+    (l) =>
+      l.name.toLowerCase() === normalized ||
+      l.code.toLowerCase() === normalized ||
+      l.speechCode.toLowerCase() === normalized
   );
   return match || { name: 'English', code: 'en', speechCode: 'en-US' };
 }
 
-// In-memory cache for ultra-fast instant lookups
+// In-memory cache for ultra-fast instant lookups of repeated phrases
 const translationCache = new Map<string, string>();
 const MAX_CACHE_SIZE = 1000;
 
-function getCacheKey(text: string, targetLangCode: string, sourceLangCode: string): string {
-  return `${sourceLangCode}->${targetLangCode}:${text.trim().toLowerCase()}`;
+function getCacheKey(text: string, targetLang: string, sourceLang: string): string {
+  return `${sourceLang}->${targetLang}:${text.trim().toLowerCase()}`;
+}
+
+function saveToCache(key: string, value: string) {
+  if (translationCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = translationCache.keys().next().value;
+    if (oldestKey) translationCache.delete(oldestKey);
+  }
+  translationCache.set(key, value);
 }
 
 /**
- * Gets custom user API key if configured
+ * Retrieve OpenAI API Key from localStorage or environment variable
  */
-export function getCustomTranslateApiKey(): string | null {
+export function getOpenAIApiKey(): string | null {
   try {
-    return localStorage.getItem('smartmic_translate_api_key') || (import.meta as any).env?.VITE_TRANSLATE_API_KEY || null;
+    return (
+      localStorage.getItem('smartmic_openai_api_key') ||
+      localStorage.getItem('smartmic_translate_api_key') ||
+      (import.meta as any).env?.VITE_OPENAI_API_KEY ||
+      null
+    );
   } catch {
     return null;
   }
 }
 
-export function setCustomTranslateApiKey(key: string | null) {
+/**
+ * Save custom OpenAI API Key
+ */
+export function setOpenAIApiKey(key: string | null) {
   try {
-    if (key) {
+    if (key && key.trim()) {
+      localStorage.setItem('smartmic_openai_api_key', key.trim());
       localStorage.setItem('smartmic_translate_api_key', key.trim());
     } else {
+      localStorage.removeItem('smartmic_openai_api_key');
       localStorage.removeItem('smartmic_translate_api_key');
     }
   } catch {}
 }
 
+// Backward compatibility aliases
+export const getCustomTranslateApiKey = getOpenAIApiKey;
+export const setCustomTranslateApiKey = setOpenAIApiKey;
+
 /**
- * Translates text into target language using Google Chrome-Ex endpoint with GTX and MyMemory fallbacks.
- * Sub-200ms latency designed for streaming voice translation.
+ * Translates speech text into the target language EXCLUSIVELY using the OpenAI ChatGPT API (gpt-4o-mini).
  */
 export async function translateText(
   text: string,
@@ -84,124 +109,77 @@ export async function translateText(
   if (!cleanText) return '';
 
   const targetInfo = getLanguageInfo(targetLang);
-  const targetCode = targetInfo.code;
-  const sourceCode = sourceLang === 'auto' ? 'auto' : getLanguageInfo(sourceLang).code;
+  const sourceInfo = sourceLang === 'auto' ? null : getLanguageInfo(sourceLang);
 
-  if (sourceCode === targetCode) {
+  // If source and target are the same language, no translation needed
+  if (sourceInfo && sourceInfo.code === targetInfo.code) {
     return cleanText;
   }
 
-  const cacheKey = getCacheKey(cleanText, targetCode, sourceCode);
+  const cacheKey = getCacheKey(cleanText, targetInfo.name, sourceInfo ? sourceInfo.name : 'auto');
   if (translationCache.has(cacheKey)) {
     return translationCache.get(cacheKey)!;
   }
 
-  // Engine 0: Custom Google Cloud Translation API (if user entered an API key)
-  const userApiKey = getCustomTranslateApiKey();
-  if (userApiKey) {
-    try {
-      const gUrl = `https://translation.googleapis.com/language/translate/v2?key=${userApiKey}`;
-      const res = await fetch(gUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          q: cleanText,
-          target: targetCode,
-          source: sourceCode === 'auto' ? undefined : sourceCode,
-          format: 'text',
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const translated = data?.data?.translations?.[0]?.translatedText;
-        if (translated) {
-          saveToCache(cacheKey, translated);
-          return translated;
-        }
-      }
-    } catch {}
+  const apiKey = getOpenAIApiKey();
+  if (!apiKey) {
+    console.warn(
+      'OpenAI API Key is missing. Please add VITE_OPENAI_API_KEY in .env or configure your key in Translation Settings.'
+    );
+    return cleanText;
   }
 
-  // Engine 1: Google Translate Chrome-Ex (Extremely fast, reliable, zero cost)
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=${sourceCode}&tl=${targetCode}&dt=t&q=${encodeURIComponent(cleanText)}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    const res = await fetch(url, {
+    const systemPrompt = `You are a professional real-time speech translation engine for live auditorium sessions.
+Translate the following spoken text into ${targetInfo.name}.
+Rules:
+1. Output ONLY the direct translated speech.
+2. Do NOT add quotes, markdown, explanations, speaker tags, or notes.
+3. Keep colloquial spoken idioms natural and immediate.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
       signal: controller.signal,
       headers: {
-        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
       },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: cleanText },
+        ],
+        temperature: 0.1,
+        max_tokens: 250,
+      }),
     });
+
     clearTimeout(timeoutId);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const translated = data[0].map((item: any) => item[0]).filter(Boolean).join('');
-        if (translated) {
-          saveToCache(cacheKey, translated);
-          return translated;
-        }
-      }
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      console.error('ChatGPT API translation error:', response.status, errData);
+      return cleanText;
     }
-  } catch (err) {
-    // Failover to Engine 2
-  }
 
-  // Engine 2: Google Translate GTX fallback
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceCode}&tl=${targetCode}&dt=t&q=${encodeURIComponent(cleanText)}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const data = await response.json();
+    const translated = data?.choices?.[0]?.message?.content?.trim();
 
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const translated = data[0].map((item: any) => item[0]).filter(Boolean).join('');
-        if (translated) {
-          saveToCache(cacheKey, translated);
-          return translated;
-        }
-      }
+    if (translated) {
+      saveToCache(cacheKey, translated);
+      return translated;
     }
-  } catch (err) {
-    // Failover to Engine 3
-  }
-
-  // Engine 3: MyMemory API fallback
-  try {
-    const src = sourceCode === 'auto' ? 'en' : sourceCode;
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=${src}|${targetCode}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const data = await res.json();
-      const translated = data.responseData?.translatedText;
-      if (translated && !translated.includes('MYMEMORY WARNING')) {
-        saveToCache(cacheKey, translated);
-        return translated;
-      }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.warn('ChatGPT translation timed out (>4000ms)');
+    } else {
+      console.error('ChatGPT translation error:', err);
     }
-  } catch (err) {
-    // Failover
   }
 
   return cleanText;
-}
-
-function saveToCache(key: string, value: string) {
-  if (translationCache.size >= MAX_CACHE_SIZE) {
-    const oldestKey = translationCache.keys().next().value;
-    if (oldestKey) translationCache.delete(oldestKey);
-  }
-  translationCache.set(key, value);
 }

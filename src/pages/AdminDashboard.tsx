@@ -6,6 +6,7 @@ import { useQueueActions } from '@/hooks/useQueueActions';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useSessionAnalytics } from '@/hooks/useSessionAnalytics';
 import { QRDisplay } from '@/components/QRDisplay';
+import { buildDynamicSessionUrl } from '@/lib/dynamicQrService';
 import { QueueList } from '@/components/QueueList';
 import { AudioStatus } from '@/components/AudioStatus';
 import { AudioEqualizer } from '@/components/AudioEqualizer';
@@ -112,6 +113,7 @@ export default function AdminDashboard() {
 
   // Modals & UI State
   const [showQrModal, setShowQrModal] = useState(false);
+  const [dynamicQrEnabled, setDynamicQrEnabled] = useState(true);
   const [copiedId, setCopiedId] = useState(false);
   const [currentDateTime, setCurrentDateTime] = useState('');
 
@@ -292,10 +294,16 @@ export default function AdminDashboard() {
   };
 
   const copySessionLink = () => {
-    const url = `${window.location.origin}/session/${sessionId}`;
+    const url = dynamicQrEnabled && sessionId
+      ? buildDynamicSessionUrl(sessionId).url
+      : `${window.location.origin}/session/${sessionId}`;
     navigator.clipboard.writeText(url);
     setCopiedId(true);
-    toast.success('Session link copied to clipboard!');
+    toast.success(
+      dynamicQrEnabled
+        ? 'Live 30s dynamic link copied (valid right now)!'
+        : 'Session link copied to clipboard!'
+    );
     setTimeout(() => setCopiedId(false), 2000);
   };
 
@@ -747,25 +755,43 @@ export default function AdminDashboard() {
               exit={{ opacity: 0, height: 0 }}
               className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm"
             >
-              <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="bg-emerald-50/60 p-2 rounded-xl border border-emerald-200 shadow-xs">
-                    <QRDisplay sessionId={session.id} size={100} />
+              <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                  <div className="bg-emerald-50/60 p-2 rounded-2xl border border-emerald-200 shadow-xs">
+                    <QRDisplay sessionId={session.id} size={120} dynamic={dynamicQrEnabled} showDetails={false} />
                   </div>
-                  <div className="space-y-1">
-                    <p className="font-heading text-sm font-semibold text-slate-900">Audience QR & Quick Join</p>
-                    <p className="text-xs text-slate-500 max-w-md">
-                      Audience can scan this QR code with any smartphone to request microphones, vote on live polls, and submit questions.
+                  <div className="space-y-1.5 text-center sm:text-left">
+                    <div className="flex items-center justify-center sm:justify-start gap-2">
+                      <p className="font-heading text-base font-semibold text-slate-900">Audience QR & Quick Join</p>
+                      {dynamicQrEnabled && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          30s Rotating Security
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+                      {dynamicQrEnabled
+                        ? 'QR code rotates automatically every 30 seconds. Screenshots and forwarded links expire to prevent outside access.'
+                        : 'Standard static QR code. Audience can scan with smartphone camera to join.'}
                     </p>
-                    <p className="text-xs font-mono text-emerald-600 select-all font-semibold">
-                      {window.location.origin}/session/{session.id}
-                    </p>
+                    <div className="flex items-center gap-3 pt-1 justify-center sm:justify-start">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={dynamicQrEnabled}
+                          onChange={(e) => setDynamicQrEnabled(e.target.checked)}
+                          className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                        />
+                        <span>30s Dynamic Security</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="secondary" onClick={copySessionLink} className="rounded-xl text-xs h-8">
                     {copiedId ? <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 mr-1 text-emerald-600" />}
-                    Copy Invite Link
+                    Copy Live Link
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setShowQrModal(false)} className="rounded-xl text-xs h-8">
                     Close

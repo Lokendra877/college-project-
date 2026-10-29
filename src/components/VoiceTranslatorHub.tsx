@@ -113,7 +113,7 @@ export function VoiceTranslatorHub({
 
   const handleSaveApiKey = () => {
     setCustomTranslateApiKey(customApiKey.trim() || null);
-    toast.success(customApiKey.trim() ? 'Custom Translation API Key saved' : 'Switched to free Google Chrome-Ex engine');
+    toast.success(customApiKey.trim() ? 'OpenAI ChatGPT API Key saved successfully!' : 'OpenAI API Key removed');
     setShowApiModal(false);
   };
 
@@ -381,18 +381,17 @@ export function VoiceTranslatorHub({
           >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-blue-600" /> Translation Engine Configuration
+                <Key className="w-3.5 h-3.5 text-blue-600" /> OpenAI ChatGPT Voice Translator
               </span>
-              <span className="text-[11px] text-blue-600 font-medium">Free & Fast by default</span>
+              <span className="text-[11px] text-blue-600 font-medium">gpt-4o-mini</span>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              By default, Smart Auditorium uses the ultra-fast <strong>Google Chrome-Ex Engine</strong> (sub-200ms, free).
-              If you have your own <strong>Google Cloud Translation API Key</strong>, you can paste it below:
+              Enter your <strong>OpenAI API Key</strong> (`sk-...`) to power real-time speech translation with ChatGPT:
             </p>
             <div className="flex items-center gap-2">
               <Input
                 type="password"
-                placeholder="AIzaSy... (Leave empty to use free engine)"
+                placeholder="sk-proj-... (OpenAI API Key)"
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
                 className="h-8 text-xs bg-background"
