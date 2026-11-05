@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  getAllowedAdminEmails,
+  addAllowedAdminEmail,
+  removeAllowedAdminEmail,
+  isEmailAuthorized,
+} from '@/lib/adminAuthService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +23,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Loader2, Plus, LogOut, Mic, ExternalLink, Trash2, Power, History } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Loader2, Plus, LogOut, Mic, ExternalLink, Trash2, Power, History, UserCheck, Shield, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminNotifications } from '@/components/AdminNotifications';
 
@@ -45,10 +58,23 @@ export default function AdminHome() {
   const [endConfirm, setEndConfirm] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
 
+  // Allowed Emails Management Modal
+  const [showManageAccess, setShowManageAccess] = useState(false);
+  const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
+  const [newEmailInput, setNewEmailInput] = useState('');
+
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const localEmail = localStorage.getItem('smartmic_admin_email');
+      const activeEmail = session?.user?.email || localEmail;
+
+      if (!activeEmail || !isEmailAuthorized(activeEmail)) {
+        localStorage.removeItem('smartmic_admin_email');
+        await supabase.auth.signOut().catch(() => {});
+        navigate('/admin-login');
+        return;
+      }
       
       if (session) {
         setUser({ id: session.user.id, email: session.user.email });
@@ -56,12 +82,37 @@ export default function AdminHome() {
       } else if (localEmail) {
         setUser({ id: 'local-admin', email: localEmail });
         fetchSessions('local-admin');
-      } else {
-        navigate('/admin-login');
       }
+
+      setAllowedEmails(getAllowedAdminEmails());
     };
     checkAuth();
   }, [navigate]);
+
+  const handleAddEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newEmailInput.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+    const success = addAllowedAdminEmail(clean);
+    if (success) {
+      setAllowedEmails(getAllowedAdminEmails());
+      setNewEmailInput('');
+      toast.success(`Permission granted to ${clean}`);
+    }
+  };
+
+  const handleRemoveEmail = (emailToRemove: string) => {
+    if (allowedEmails.length <= 1) {
+      toast.error('You cannot remove the only remaining admin email');
+      return;
+    }
+    removeAllowedAdminEmail(emailToRemove);
+    setAllowedEmails(getAllowedAdminEmails());
+    toast.success(`Removed permission for ${emailToRemove}`);
+  };
 
   const fetchSessions = async (userId: string) => {
     let query = supabase.from('sessions').select('*').order('created_at', { ascending: false });
@@ -250,6 +301,18 @@ export default function AdminHome() {
           </div>
           <div className="flex items-center gap-2">
             <AdminNotifications />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAllowedEmails(getAllowedAdminEmails());
+                setShowManageAccess(true);
+              }}
+              className="gap-1.5 text-xs h-9 rounded-xl border-border"
+            >
+              <UserCheck className="w-4 h-4 text-primary" />
+              <span className="hidden sm:inline">Allowed Users</span>
+            </Button>
             <Button variant="hero" size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="w-4 h-4 mr-1" /> New Session
             </Button>
@@ -458,6 +521,83 @@ export default function AdminHome() {
           </div>
         )}
       </div>
+
+      {/* Allowed Users & Permission Manager Dialog */}
+      <Dialog open={showManageAccess} onOpenChange={setShowManageAccess}>
+        <DialogContent className="max-w-md rounded-2xl bg-card">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-2">
+              <Shield className="w-5 h-5" />
+            </div>
+            <DialogTitle className="font-heading text-xl">Authorized Emails & Permissions</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Only people with these email addresses are permitted to log in and manage auditorium sessions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {/* Add New Email Form */}
+            <form onSubmit={handleAddEmail} className="flex gap-2">
+              <Input
+                type="email"
+                placeholder="colleague@institution.edu"
+                value={newEmailInput}
+                onChange={(e) => setNewEmailInput(e.target.value)}
+                className="text-xs h-10"
+              />
+              <Button type="submit" size="sm" className="h-10 px-4 gap-1.5 text-xs font-semibold whitespace-nowrap">
+                <UserPlus className="w-4 h-4" /> Grant Access
+              </Button>
+            </form>
+
+            {/* List of Allowed Emails */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Authorized List ({allowedEmails.length})
+              </p>
+              {allowedEmails.length === 0 ? (
+                <div className="text-center py-6 text-xs text-muted-foreground">
+                  No specific whitelist configured. Current logged-in admin has full access.
+                </div>
+              ) : (
+                allowedEmails.map((email) => {
+                  const isCurrent = user?.email?.toLowerCase() === email.toLowerCase();
+                  return (
+                    <div
+                      key={email}
+                      className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 bg-muted/30 text-xs"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="font-mono text-foreground font-medium truncate">{email}</span>
+                        {isCurrent && (
+                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold">
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveEmail(email)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                        title="Revoke Permission"
+                        disabled={isCurrent && allowedEmails.length <= 1}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground bg-muted/40 p-2.5 rounded-xl border border-border/40">
+              💡 <strong>Tip:</strong> Any unauthorized person trying to log in with an unlisted email will be blocked immediately with an &quot;Access Denied&quot; alert.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

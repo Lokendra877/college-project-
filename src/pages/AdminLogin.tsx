@@ -2,47 +2,68 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
+import { isEmailAuthorized } from '@/lib/adminAuthService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, ArrowLeft, Mail } from 'lucide-react';
+import { Shield, ArrowLeft, Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [usePassword, setUsePassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [accessDeniedMsg, setAccessDeniedMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
-    setLoading(true);
+    setAccessDeniedMsg(null);
 
     const cleanEmail = email.trim().toLowerCase();
-    const defaultPass = `SmartMic#2026_${cleanEmail}`;
+    const cleanPassword = password.trim();
 
-    if (!usePassword) {
-      // 1-Click Email Login mode
+    if (!cleanEmail) {
+      toast.error('Please enter your email address');
+      return;
+    }
+
+    if (!cleanPassword) {
+      toast.error('Please enter your password');
+      return;
+    }
+
+    // 1. Permission check: Only authorized emails can open the admin panel
+    const authorized = isEmailAuthorized(cleanEmail);
+    if (!authorized) {
+      const msg = `Access Denied: '${cleanEmail}' is not permitted to access this portal. Please contact the administrator.`;
+      setAccessDeniedMsg(msg);
+      toast.error('Access Denied: You do not have permission to access this website');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // 2. Try standard Supabase Auth with email & password
       const { error: signInErr } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
-        password: defaultPass,
+        password: cleanPassword,
       });
 
       if (!signInErr) {
         localStorage.setItem('smartmic_admin_email', cleanEmail);
         toast.success('Logged in successfully!');
         navigate('/admin-home');
-        setLoading(false);
         return;
       }
 
-      // If account doesn't exist, create it automatically
+      // If user not registered yet in Supabase Auth, attempt sign-up with their chosen password
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
         email: cleanEmail,
-        password: defaultPass,
+        password: cleanPassword,
         options: { data: { display_name: cleanEmail.split('@')[0] } },
       });
 
@@ -50,27 +71,25 @@ export default function AdminLogin() {
         localStorage.setItem('smartmic_admin_email', cleanEmail);
         toast.success('Admin account created & logged in!');
         navigate('/admin-home');
-        setLoading(false);
         return;
       }
 
-      // Fallback local session if Supabase Auth email rate limit is active
+      // If Supabase returns invalid login credentials error
+      if (signInErr && signInErr.message.toLowerCase().includes('invalid login credentials')) {
+        toast.error('Invalid password for this account');
+        return;
+      }
+
+      // Fallback local session for authorized admin if Supabase email confirmation/rate limit is active
       localStorage.setItem('smartmic_admin_email', cleanEmail);
       toast.success(`Welcome ${cleanEmail.split('@')[0]}!`);
       navigate('/admin-home');
-    } else {
-      // Standard password login
-      const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-      if (error) {
-        toast.error(error.message);
-        setLoading(false);
-        return;
-      }
-      localStorage.setItem('smartmic_admin_email', cleanEmail);
-      toast.success('Logged in!');
-      navigate('/admin-home');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      toast.error(err?.message || 'Login failed. Please check credentials.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -98,10 +117,17 @@ export default function AdminLogin() {
               Admin Login
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Enter your email to access your admin dashboard
+              Enter your authorized email and password to access the portal
             </p>
           </CardHeader>
           <CardContent>
+            {accessDeniedMsg && (
+              <div className="mb-4 p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="leading-relaxed font-medium">{accessDeniedMsg}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
@@ -112,7 +138,10 @@ export default function AdminLogin() {
                     type="email"
                     placeholder="admin@example.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (accessDeniedMsg) setAccessDeniedMsg(null);
+                    }}
                     required
                     className="pl-10"
                     autoFocus
@@ -120,34 +149,38 @@ export default function AdminLogin() {
                 </div>
               </div>
 
-              {usePassword && (
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    className="pl-10 pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-              )}
+              </div>
+
+              <div className="p-3 bg-muted/40 rounded-xl border border-border/50 text-[11px] text-muted-foreground flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Restricted Access: Only pre-authorized administrative emails can sign in.</span>
+              </div>
 
               <Button variant="hero" className="w-full text-base py-5" type="submit" disabled={loading}>
-                {loading ? 'Logging in...' : 'Continue with Email'}
+                {loading ? 'Authenticating...' : 'Sign In'}
               </Button>
             </form>
-
-            <div className="text-center text-xs text-muted-foreground mt-4">
-              <button
-                type="button"
-                className="hover:underline text-primary"
-                onClick={() => setUsePassword(!usePassword)}
-              >
-                {usePassword ? 'Use 1-Click Email Login' : 'Sign in with Password instead'}
-              </button>
-            </div>
           </CardContent>
         </Card>
       </motion.div>
